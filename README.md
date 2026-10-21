@@ -1,6 +1,6 @@
 # GameHelper 水印检查器 · 纯 Web
 
-[在线使用](https://gudujiucheng.github.io/watermark-inspector-web/) · [部署状态](https://github.com/gudujiucheng/watermark-inspector-web/actions/workflows/pages.yml)
+[在线使用](https://honglang.online/watermark-inspector-web/) · [部署状态](https://github.com/gudujiucheng/watermark-inspector-web/actions/workflows/pages.yml)
 
 直接访问在线页面即可解码，无需安装桌面工具。图片只在浏览器内处理，不上传到 GitHub 或其他服务器。
 
