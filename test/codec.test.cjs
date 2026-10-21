@@ -8,7 +8,13 @@ test('Python 镜像向量：63位账号、位序、BCH码字及纹理逐字节�
   for (const vector of vectors) {
     const payload = codec.fromHex(vector.payload), codeword = codec.bchEncode(payload);
     assert.equal(codec.hex(codeword), vector.codeword);
-    assert.equal(codec.readPayload(payload).userId, vector.uid);
+    const decoded = codec.readPayload(payload);
+    assert.equal(decoded.userId, vector.uid);
+    if (vector.version === 7) {
+      assert.equal(decoded.protocol, 'GHCV7');
+      assert.equal(decoded.gameId, vector.gameId);
+      assert.equal('page' in decoded, false);
+    }
     assert.equal(createHash('sha256').update(codec.makeTile(payload)).digest('hex'), vector.tileSha256);
   }
 });
@@ -46,7 +52,7 @@ function synthetic(vector, shiftX = 0, shiftY = 0) {
 }
 
 test('单帧像素盲解码、平移与高位账号恢复', () => {
-  for (const vector of [vectors[0], vectors[3]]) {
+  for (const vector of [vectors[0], vectors[3], vectors.find(v => v.version === 7)]) {
     const image = synthetic(vector, 27, 19), result = codec.decodeImage(image.rgba, image.width, image.height);
     assert.equal(result.detected, true);
     assert.equal(result.userId, vector.uid);

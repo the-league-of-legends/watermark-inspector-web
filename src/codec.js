@@ -1,5 +1,5 @@
 /**
- * GHCV6 纯 JavaScript 编解码。移植自 zylcold/BlindWatermark (MIT)
+ * GHCV6/7 纯 JavaScript 编解码。移植自 zylcold/BlindWatermark (MIT)
  * fa59d61a163b475512b475e1d1f99ccce1168426；许可见 LICENSE.upstream。
  * 数组位序、纠错、同步搜索与 Python 镜像一致，不依赖服务器或模型。
  */
@@ -65,15 +65,19 @@ const WatermarkCodec = (() => {
       for (let i = 0; i < width; i++) value += bits[cursor++] * 2 ** i;
       return value;
     }
-    if (read(4) !== 6) return null;
+    const version = read(4);
+    if (version !== 6 && version !== 7) return null;
     const lowUid = read(32), timestamp = EPOCH + read(31), revision = EPOCH + read(24) * 60;
-    const page = radixText(read(42), 8), game = read(14), upper = read(32), crc = read(24), reserved = read(8);
-    if (page === null || game > 9999 || upper >= 37 ** 6 || reserved || crc24(bits.slice(0, 179)) !== crc) return null;
+    const pageBits = read(42);
+    if (version === 7 && pageBits !== 0) return null;
+    const legacyPage = version === 6 ? radixText(pageBits, 8) : null;
+    const game = read(version === 6 ? 14 : 16), upper = read(32), crc = read(24), reserved = read(version === 6 ? 8 : 6);
+    if ((version === 6 && legacyPage === null) || game > (version === 6 ? 9999 : 65535) || upper >= 37 ** 6 || reserved || crc24(bits.slice(0, version === 6 ? 179 : 181)) !== crc) return null;
     // GHCV6 的 note 数值承载 userId 高31位；不能用 JS Number 拼接63位账号。
     if (upper > 0x7fffffff || timestamp % 30) return null;
     const uid = (BigInt(upper) << 32n) | BigInt(lowUid);
-    return {userId: uid ? uid.toString() : null, loggedIn: uid !== 0n,
-      gameId: game, page, timeStartUtc: timestamp, timeEndUtc: timestamp + 29,
+    return {protocol: `GHCV${version}`, userId: uid ? uid.toString() : null, loggedIn: uid !== 0n,
+      gameId: game, timeStartUtc: timestamp, timeEndUtc: timestamp + 29,
       protocolRevisionTimeUtc: revision, payloadHex: hex(bytes)};
   }
   function bchEncode(message) {
@@ -334,7 +338,7 @@ const WatermarkCodec = (() => {
       const best = result.best;
       if (best.minObs < MIN_OBS) return failure('insufficient_observations');
       const {payloadHex, ...payload} = best.payload;
-      return {detected: true, protocol: 'GHCV6', ...payload, correctedBits: best.correctedBits,
+      return {detected: true, ...payload, correctedBits: best.correctedBits,
         minObservations: best.minObs, elapsedMs: Math.round(performance.now() - started),
         crcStatus: 'OK (integrity only; not authenticated)',
         diagnostics: {payloadHex, scale: best.ctx.scale, cellPhaseX: best.ctx.x, cellPhaseY: best.ctx.y,

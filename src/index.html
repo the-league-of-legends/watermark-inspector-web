@@ -3,7 +3,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; img-src blob: data:; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>水印检查器 · GameHelper</title>
 <style>__STYLE__</style>
-<header><div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h1>水印检查器</h1><small>GAMEHELPER · GHCV6 / WEB</small></div></div><span class="local">纯浏览器 · 图片不上传</span><button class="quiet" id="quit">清空图片</button></header>
+<header><div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h1>水印检查器</h1><small>GAMEHELPER · GHCV6+7 / WEB</small></div></div><span class="local">纯浏览器 · 图片不上传</span><button class="quiet" id="quit">清空图片</button></header>
 <main><div class="intro"><h2>把微弱的颜色信号，看清楚。</h2><p>检查 Android 系统截图，也支持录屏抽出的单帧。</p></div>
 <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
 <div id="drop" class="drop" tabindex="0" role="button" aria-label="拖入或选择一张截图">
@@ -11,7 +11,7 @@
 <h3>拖入截图，或直接 ⌘V 粘贴</h3><p>自动校验账号信息，放大实际像素中的色度变化，并在解码成功后展示参考纹理。</p><div class="paste-actions"><button class="primary" id="choose">选择图片</button><button id="paste-empty">粘贴图片 ⌘V</button></div><span class="hint">PNG / JPEG / WebP / BMP · 最大 25 MB、1200 万像素</span></div>
 <div id="busy" class="busy hidden" role="status"><i class="spinner"></i><span id="busytext">正在校验水印…</span><button id="cancel">取消</button></div><div id="error" class="error hidden" role="alert"></div>
 <section id="content" class="hidden">
-<div class="statusbar" aria-live="polite"><div><label>识别状态</label><div class="value" id="status">—</div></div><div><label>userId</label><div class="value mono" id="uid">—</div></div><div><label>游戏 / 页面</label><div class="value mono" style="font-size:14px" id="game">—</div></div><div><label>截图时间片 · 本地时间</label><div class="value mono" style="font-size:13px" id="time">—</div></div><div><label>解码耗时 / 图片尺寸</label><div class="value mono" style="font-size:13px" id="dimensions">—</div></div></div>
+<div class="statusbar" aria-live="polite"><div><label>识别状态</label><div class="value" id="status">—</div></div><div><label>userId</label><div class="value mono" id="uid">—</div></div><div><label id="game-label">子游戏</label><div class="value mono" style="font-size:14px" id="game">—</div></div><div><label>截图时间片 · 本地时间</label><div class="value mono" style="font-size:13px" id="time">—</div></div><div><label>解码耗时 / 图片尺寸</label><div class="value mono" style="font-size:13px" id="dimensions">—</div></div></div>
 <div class="toolbar"><span class="filename" id="filename"></span><button id="paste">粘贴图片 ⌘V</button><button id="replace">更换图片</button><label class="barlabel"><span class="zoomlabel">缩放</span><select id="zoom" aria-label="缩放比例"><option value="fit">适应窗口</option><option value="1">100% · 原始像素</option><option value="2">200%</option></select></label><button id="download">导出当前着色图</button><button id="json">导出识别 JSON</button></div>
 <section id="locator" class="hidden" aria-label="信息位置说明">
 <div class="locate-summary"><div><strong>信息重复铺满画面，不在某个角落</strong><p>蓝框内重复编码 userId、游戏和时间，并含纠错信息；每块右侧的橙色窄列用于同步定位。恢复时会合并多块观测。</p></div><label><input type="checkbox" id="boxes" checked> 框出参考编码区</label></div>

@@ -103,7 +103,8 @@ function renderResult(file) {
   $('status').textContent = result.detected ? '已校验 · 完整载荷' : '未识别';
   $('status').className = 'value ' + (result.detected ? 'good' : 'bad');
   $('uid').textContent = result.detected ? (result.userId || '未登录') : '—';
-  $('game').textContent = result.detected ? `${result.gameId} / ${result.page}` : '—';
+  $('game-label').textContent = result.protocol === 'GHCV7' ? '子游戏 ID' : '游戏 ID（旧版主游戏）';
+  $('game').textContent = result.detected ? String(result.gameId) : '—';
   $('time').textContent = result.detected ? new Date(result.timeStartUtc * 1000).toLocaleString('zh-CN', {hour12: false}) : '—';
   $('dimensions').textContent = `${(result.elapsedMs / 1000).toFixed(2)} s / ${result.width} × ${result.height}`;
   $('details').textContent = JSON.stringify(result, null, 2);
