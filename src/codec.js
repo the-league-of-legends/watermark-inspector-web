@@ -8,6 +8,8 @@ const WatermarkCodec = (() => {
   const SUPPORTED_PROTOCOLS = Object.freeze(['GHCV6', 'GHCV7']);
   const EPOCH = 1767225600, ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789_';
   const WIDTH = 544, HEIGHT = 512, ROWS = 64, COLS = 17, DATA_COLS = 16;
+  const MIN_SCALE = 1 / 3;
+  const SMALL_SCALES = Object.freeze([MIN_SCALE, ...Array.from({length:16}, (_, i) => .34 + i * .01)]);
   const MIN_OBS = 5, MIN_PILOT = .35, MAX_CONTEXTS = 12;
   const generator = BigInt('0x1afacb7265f767a72b944cd8262f8e5da4fc52abda8671e54039803464e5c000fede5061fc03');
   const generatorBits = Array.from({length: 301}, (_, i) => Number(generator >> BigInt(i) & 1n));
@@ -287,7 +289,7 @@ const WatermarkCodec = (() => {
     function scan(values) {
       const found = [];
       for (const scale of values) {
-        check(); if (!Number.isFinite(scale) || scale < .5 || scale > 1.5) continue;
+        check(); if (!Number.isFinite(scale) || scale < MIN_SCALE || scale > 1.5) continue;
         let best = null;
         for (let y = 0; y < 8 * scale; y += 2) for (let x = 0; x < 32 * scale; x += 4) {
           check(); const ctx = context(sat, {scale, x, y}, bounds, companion);
@@ -311,9 +313,9 @@ const WatermarkCodec = (() => {
     }
     if (scales) return finish(scan(scales));
     const exact = finish(scan([1])); if (exact) return exact;
-    const coarse = scan(Array.from({length: 21}, (_, i) => .5 + i * .05)), fine = new Set(), step = 1 / Math.max(sat.width, sat.height);
+    const coarse = scan([...SMALL_SCALES, ...Array.from({length: 21}, (_, i) => .5 + i * .05)]), fine = new Set(), step = 1 / Math.max(sat.width, sat.height);
     for (const seed of coarse.slice(0, 3)) {
-      for (let value = Math.max(.5, seed.scale - .03); value <= Math.min(1.5, seed.scale + .03) + 1e-10; value += step) fine.add(Math.floor(value * 1e6 + .5) / 1e6);
+      for (let value = Math.max(MIN_SCALE, seed.scale - .03); value <= Math.min(1.5, seed.scale + .03) + 1e-10; value += step) fine.add(Math.max(MIN_SCALE, Math.min(1.5, Math.floor(value * 1e6 + .5) / 1e6)));
     }
     return finish(scan(Array.from(fine).sort((a, b) => a - b)));
   }
@@ -338,6 +340,11 @@ const WatermarkCodec = (() => {
       if (!result) {
         progress('抑制强背景干扰并重试局部截图');
         result = decodeBest(rgba, width, height, bounds, fastScales, check, progress, 4);
+      }
+      if (!result) {
+        progress('搜索1/3至1/2的小比例截图');
+        result = decodeBest(rgba, width, height, bounds, SMALL_SCALES, check, progress);
+        if (!result) result = decodeBest(rgba, width, height, bounds, SMALL_SCALES, check, progress, 4);
       }
       if (!result && options.fullSearch !== false) result = decodeBest(rgba, width, height, bounds, null, check, progress);
       if (!result && options.fullSearch !== false) result = decodeBest(rgba, width, height, bounds, null, check, progress, 4);

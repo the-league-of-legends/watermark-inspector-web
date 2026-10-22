@@ -34,3 +34,18 @@ test('同版本不显示更新，检测合并并限制焦点重试频率',async(
   await vm.runInContext('checkVersion()',e.context);assert.equal(e.requests.length,1);
   await vm.runInContext('checkVersion(true)',e.context);assert.equal(e.requests.length,2);
 });
+
+test('同步网络异常及版本检查依赖缺失后仍可再次检测',async()=>{
+  const e=environment();await vm.runInContext('versionRequest',e.context);
+  e.context.fetch=()=>{throw Error('synchronous failure');};
+  await vm.runInContext('checkVersion(true)',e.context);
+  assert.match(e.nodes.get('version-state').textContent,/可继续离线识别/);
+  assert.equal(vm.runInContext('versionRequest',e.context),null);
+  e.context.AbortController=undefined;
+  await vm.runInContext('checkVersion(true)',e.context);
+  assert.equal(vm.runInContext('versionRequest',e.context),null);
+  e.context.AbortController=AbortController;
+  e.context.fetch=async()=>({ok:true,json:async()=>({buildId:'abcdef1234567890',protocols:['GHCV7']})});
+  await vm.runInContext('checkVersion(true)',e.context);
+  assert.equal(e.nodes.get('version-state').textContent,'已检查版本');
+});

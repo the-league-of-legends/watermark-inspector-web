@@ -69,9 +69,9 @@ test('无水印、小图和破坏图片不得输出账号', () => {
   assert.equal(codec.decodeImage(noise, 720, 1600, {fullSearch: false}).detected, false);
 });
 
-test('2/3与1/2缩放、外框、局部标注仍恢复完整载荷', () => {
+test('常见及小比例缩放、外框、局部标注仍恢复完整载荷', () => {
   const vector = vectors.find(v => v.version === 7), source = synthetic(vector);
-  for (const scale of [2 / 3, .5]) {
+  for (const scale of [2 / 3, .5, .43, 1 / 3]) {
     const left=22, top=31, width=Math.round(source.width*scale)+44, height=Math.round(source.height*scale)+62;
     const rgba=new Uint8ClampedArray(width*height*4);rgba.fill(45);
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){
@@ -106,4 +106,11 @@ test('半屏彩色背景：限幅回退保留完整载荷与原有观测门槛',
   assert.equal(value.userId,vector.uid);assert.equal(value.diagnostics.payloadHex,vector.payload);
   assert.ok(value.minObservations>=5);assert.match(value.crcStatus,/^OK/);
   assert.equal(value.diagnostics.contrastLimit,4);
+});
+
+test('扩大小比例搜索仍服从截止时间，不输出半成品身份',()=>{
+  const image=synthetic(vectors.find(v=>v.version===7));
+  const result=codec.decodeImage(image.rgba,image.width,image.height,{timeoutMs:1});
+  assert.equal(result.detected,false);assert.equal(result.reason,'decode_timeout');
+  assert.equal('userId' in result,false);
 });

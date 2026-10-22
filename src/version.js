@@ -9,9 +9,11 @@ async function checkVersion(force = false) {
   if (versionRequest) return versionRequest;
   if (!force && Date.now() - lastVersionCheck < 60000) return;
   lastVersionCheck = Date.now();
-  versionRequest = (async () => {
-    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 1200);
+  const request = (async () => {
+    let timeout;
     try {
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), 1200);
       const url = new URL('./version.json', location.href);
       const response = await fetch(url, {cache:'no-store', credentials:'omit', redirect:'error', signal:controller.signal});
       if (!response.ok) throw Error('version unavailable');
@@ -24,9 +26,11 @@ async function checkVersion(force = false) {
       } else { $('version-state').textContent = '已检查版本'; $('update-notice').classList.add('hidden'); }
     } catch {
       $('version-state').textContent = '版本检查不可用 · 可继续离线识别';
-    } finally { clearTimeout(timeout); versionRequest = null; }
+    } finally { clearTimeout(timeout); }
   })();
-  return versionRequest;
+  // 即使fetch同步抛错，先发布请求引用，再于await后清理，避免永远复用已失败的Promise。
+  versionRequest = request;
+  try { await request; } finally { if (versionRequest === request) versionRequest = null; }
 }
 const isLocalPreview = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 $('build-version').textContent = `${isLocalPreview ? '本地测试版' : '静态版'} · ${BUILD_INFO.buildId.slice(0,8)}`;
