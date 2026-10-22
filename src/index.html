@@ -1,26 +1,28 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; img-src blob: data:; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; img-src blob: data:; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
 <title>水印检查器 · GameHelper</title>
 <style>__STYLE__</style>
-<header><div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h1>水印检查器</h1><small>GAMEHELPER · GHCV6+7 / WEB</small></div></div><span class="local">纯浏览器 · 图片不上传</span><button class="quiet" id="quit">清空图片</button></header>
-<main><div class="intro"><h2>把微弱的颜色信号，看清楚。</h2><p>检查 Android 系统截图，也支持录屏抽出的单帧。</p></div>
+<header><div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h1>水印检查器</h1><small id="supported-protocols">支持协议 GHCV6 / GHCV7 · WEB</small></div></div><div class="build-meta"><span id="build-version"></span><small id="version-state">图片本地处理 · 不上传</small></div><span class="local">纯浏览器 · 图片不上传</span><button class="quiet" id="quit">清空图片</button></header>
+<main><aside id="update-notice" class="update-notice hidden" role="status"><span id="update-message"></span><button id="update-page">更新检查器</button></aside><div class="intro"><h2>把微弱的颜色信号，看清楚。</h2><p>检查兼容协议的客户端截图、标注图及录屏抽帧。</p></div>
 <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
 <div id="drop" class="drop" tabindex="0" role="button" aria-label="拖入或选择一张截图">
 <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="5" y="6" width="38" height="36" rx="6" stroke="currentColor" stroke-width="1.5"/><path d="m10 33 9-9 7 7 6-6 6 8M17 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-<h3>拖入截图，或直接 ⌘V 粘贴</h3><p>自动校验账号信息，放大实际像素中的色度变化，并在解码成功后展示参考纹理。</p><div class="paste-actions"><button class="primary" id="choose">选择图片</button><button id="paste-empty">粘贴图片 ⌘V</button></div><span class="hint">PNG / JPEG / WebP / BMP · 最大 25 MB、1200 万像素</span></div>
+<h3>拖入截图，或直接 ⌘V 粘贴</h3><p>自动校验完整载荷，放大实际像素中的色度变化，并在解码成功后展示参考纹理。</p><div class="paste-actions"><button class="primary" id="choose">选择图片</button><button id="paste-empty">粘贴图片 ⌘V</button></div><span class="hint">PNG / JPEG / WebP / BMP · 最大 25 MB、1200 万像素</span></div>
 <div id="busy" class="busy hidden" role="status"><i class="spinner"></i><span id="busytext">正在校验水印…</span><button id="cancel">取消</button></div><div id="error" class="error hidden" role="alert"></div>
 <section id="content" class="hidden">
-<div class="statusbar" aria-live="polite"><div><label>识别状态</label><div class="value" id="status">—</div></div><div><label>userId</label><div class="value mono" id="uid">—</div></div><div><label id="game-label">子游戏</label><div class="value mono" style="font-size:14px" id="game">—</div></div><div><label>截图时间片 · 本地时间</label><div class="value mono" style="font-size:13px" id="time">—</div></div><div><label>解码耗时 / 图片尺寸</label><div class="value mono" style="font-size:13px" id="dimensions">—</div></div></div>
+<div class="statusbar" aria-live="polite"><div><label>识别状态</label><div class="value" id="status">—</div></div><div><label>载荷协议</label><div class="value mono" id="protocol">—</div></div><div><label>解码耗时 / 图片尺寸</label><div class="value mono" id="dimensions">—</div></div></div>
+<p id="decode-reason" class="notice hidden" role="status"></p>
+<section id="payload-section" class="payload-section hidden" aria-label="已校验载荷字段"><div class="payload-heading"><h3>载荷字段</h3><span id="field-count"></span><span>仅展示完整校验通过的信息</span></div><div id="payload-fields" class="payload-fields"></div></section>
 <div class="toolbar"><span class="filename" id="filename"></span><button id="paste">粘贴图片 ⌘V</button><button id="replace">更换图片</button><label class="barlabel"><span class="zoomlabel">缩放</span><select id="zoom" aria-label="缩放比例"><option value="fit">适应窗口</option><option value="1">100% · 原始像素</option><option value="2">200%</option></select></label><button id="download">导出当前着色图</button><button id="json">导出识别 JSON</button></div>
 <section id="locator" class="hidden" aria-label="信息位置说明">
-<div class="locate-summary"><div><strong>信息重复铺满画面，不在某个角落</strong><p>蓝框内重复编码 userId、游戏和时间，并含纠错信息；每块右侧的橙色窄列用于同步定位。恢复时会合并多块观测。</p></div><label><input type="checkbox" id="boxes" checked> 框出参考编码区</label></div>
+<div class="locate-summary"><div><strong>信息重复铺满画面，不在某个角落</strong><p>蓝框内重复承载完整载荷及纠错信息；每块右侧的橙色窄列用于同步定位。恢复时会合并多块观测。</p></div><label><input type="checkbox" id="boxes" checked> 框出参考编码区</label></div>
 <div class="magnifier-title"><strong>① 肉眼观察样例</strong><span id="sample-position"></span><span class="hint">可点击下方蓝框更换样例</span><button id="next-sample">换一个区域</button></div>
 <div class="magnifiers"><article><div>实际像素增强 · 从①截取的局部</div><canvas id="sample-actual"></canvas></article><article><div>解码后重建参考 · 同一位置的编码形状</div><canvas id="sample-reference"></canvas></article></div>
-<p class="sample-note">每个小格承载编码后的比特；账号不会以可读数字藏在某一格。框线与右侧参考图根据成功解码后的估计位置绘制，不代表每个像素都单独检出了水印。</p>
+<p class="sample-note">每个小格承载编码后的比特；字段值不会以可读文字藏在某一格。框线与右侧参考图根据成功解码后的估计位置绘制，不代表每个像素都单独检出了水印。</p>
 </section><div class="workspace"><article class="pane"><div class="panehead"><strong>原始画面</strong><span id="original-caption">不增强 · 保留内容</span></div><div class="viewport" id="left"><canvas id="original"></canvas></div></article><article class="pane"><div class="panehead"><select id="mode" aria-label="增强视图"><option value="residual">实际像素 · 色度残差增强</option><option value="chroma">实际像素 · 蓝黄色度增强</option><option value="reference">解码后 · 参考纹理</option><option value="overlay">解码后 · 参考纹理叠加定位</option></select></div><div class="viewport" id="right"><canvas id="enhanced"></canvas></div></article></div>
 <div class="viewtools"><label id="gaincontrol">增强倍率 <input type="range" id="gain" min="2" max="64" value="16" step="2"><output id="gainvalue">16×</output></label><span class="legend"><span><i style="background:var(--positive)"></i>蓝向变化</span><span><i style="background:var(--negative)"></i>黄向变化</span></span></div>
 <div class="notice" id="notice"></div><details class="details"><summary>查看完整识别结果与同步参数</summary><pre id="details"></pre></details>
-</section><footer><span>实际像素增强可能包含页面原有颜色和文字边缘，不能单独作为水印存在的证明。</span><span>只有 BCH + CRC 通过且观测数量充足，才显示账号；CRC 是完整性校验，不是身份验签。离线文件可用 ⌘V / Ctrl+V 粘贴；粘贴按钮建议在 HTTPS 页面使用。</span></footer></main>
+</section><footer><span>实际像素增强可能包含页面原有颜色和文字边缘，不能单独作为水印存在的证明。</span><span>只有 BCH + CRC 通过且观测数量充足，才显示载荷字段；CRC 是完整性校验，不是身份验签。离线文件可用 ⌘V / Ctrl+V 粘贴；粘贴按钮建议在 HTTPS 页面使用。</span></footer></main>
 
 __SCRIPTS__</html>

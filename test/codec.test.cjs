@@ -68,3 +68,42 @@ test('无水印、小图和破坏图片不得输出账号', () => {
   for (let i = 0; i < noise.length; i++) { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; noise[i] = state & 255; }
   assert.equal(codec.decodeImage(noise, 720, 1600, {fullSearch: false}).detected, false);
 });
+
+test('2/3与1/2缩放、外框、局部标注仍恢复完整载荷', () => {
+  const vector = vectors.find(v => v.version === 7), source = synthetic(vector);
+  for (const scale of [2 / 3, .5]) {
+    const left=22, top=31, width=Math.round(source.width*scale)+44, height=Math.round(source.height*scale)+62;
+    const rgba=new Uint8ClampedArray(width*height*4);rgba.fill(45);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const p=(y*width+x)*4;rgba[p+3]=255;
+      if(x<left||x>=width-left||y<top||y>=height-top)continue;
+      // 区域均值模拟缩小；使用合成纹理，不包含真实媒体。
+      const x0=Math.floor((x-left)/scale),x1=Math.min(source.width,Math.ceil((x-left+1)/scale));
+      const y0=Math.floor((y-top)/scale),y1=Math.min(source.height,Math.ceil((y-top+1)/scale));
+      for(let c=0;c<3;c++){let sum=0,n=0;for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++){sum+=source.rgba[(yy*source.width+xx)*4+c];n++;}rgba[p+c]=Math.round(sum/n);}
+      if(y>300&&y<320&&x>90&&x<Math.min(width-30,420)){rgba[p]=255;rgba[p+1]=20;rgba[p+2]=0;}
+    }
+    const value=codec.decodeImage(rgba,width,height,{timeoutMs:10000});
+    assert.equal(value.detected,true,JSON.stringify(value));assert.equal(value.userId,vector.uid);
+    assert.equal(value.diagnostics.payloadHex,vector.payload);
+  }
+});
+
+test('半屏彩色背景：限幅回退保留完整载荷与原有观测门槛', () => {
+  const vector = vectors.find(v => v.version === 7), tile=codec.makeTile(codec.fromHex(vector.payload));
+  const width=1206,height=1467,rgba=new Uint8ClampedArray(width*height*4);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const p=(y*width+x)*4,t=((y%512)*544+x%544)*4;
+    const h=codec.hash(Math.floor(y/8)*53+Math.floor(x/32));
+    // 页面颜色梯度先生成，再合成水印；少量强边缘不应支配重复观测。
+    const gradient=h%3===0 ? 72*((x%32)/32-.5)*(h&1?1:-1) : 0;
+    const background=[125+(y%200)/8+gradient,135+gradient,145-gradient];
+    for(let c=0;c<3;c++)rgba[p+c]=Math.round(background[c]*251/255)+tile[t+c];
+    rgba[p+3]=255;
+  }
+  const value=codec.decodeImage(rgba,width,height,{timeoutMs:10000,fullSearch:false});
+  assert.equal(value.detected,true,JSON.stringify(value));
+  assert.equal(value.userId,vector.uid);assert.equal(value.diagnostics.payloadHex,vector.payload);
+  assert.ok(value.minObservations>=5);assert.match(value.crcStatus,/^OK/);
+  assert.equal(value.diagnostics.contrastLimit,4);
+});

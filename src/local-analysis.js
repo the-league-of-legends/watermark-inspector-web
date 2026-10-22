@@ -65,6 +65,7 @@ function clearImage() {
 async function analyze(file) {
   if (!file || busy) return;
   if (file.size > 25 * 1024 * 1024) { showError('图片超过25 MB，请先缩小'); return; }
+  void checkVersion(true);
   const turn = ++generation;
   $('error').classList.add('hidden');
   $('content').classList.add('hidden');
@@ -102,15 +103,45 @@ function renderResult(file) {
   $('filename').textContent = file.name;
   $('status').textContent = result.detected ? '已校验 · 完整载荷' : '未识别';
   $('status').className = 'value ' + (result.detected ? 'good' : 'bad');
-  $('uid').textContent = result.detected ? (result.userId || '未登录') : '—';
-  $('game-label').textContent = result.protocol === 'GHCV7' ? '子游戏 ID' : '游戏 ID（旧版主游戏）';
-  $('game').textContent = result.detected ? String(result.gameId) : '—';
-  $('time').textContent = result.detected ? new Date(result.timeStartUtc * 1000).toLocaleString('zh-CN', {hour12: false}) : '—';
+  $('protocol').textContent = result.protocol || '—';
+  const failureReasons = {
+    decode_timeout: '在本次时间预算内未恢复完整载荷。可以尝试原始截图或保留更多清晰画面。',
+    conflicting_payloads: '检测到相互冲突的载荷，未选择账号。对比拼图请分别截取各自区域后重试。',
+    insufficient_observations: '有效观测不足，未返回任何残缺字段。请尝试保留更大的原始画面。',
+    invalid_image: '图片尺寸或像素数据无效。'
+  };
+  $('decode-reason').classList.toggle('hidden', result.detected);
+  $('decode-reason').textContent = result.detected ? '' : (failureReasons[result.reason] || '未恢复完整且唯一的兼容载荷。图片可能没有水印，或信号受到缩放、遮挡和压缩影响。');
   $('dimensions').textContent = `${(result.elapsedMs / 1000).toFixed(2)} s / ${result.width} × ${result.height}`;
+  result.fields = WatermarkFields.fromResult(result);
+  result.toolBuild = BUILD_INFO.buildId;
+  renderFields(result.fields);
   $('details').textContent = JSON.stringify(result, null, 2);
   for (const option of $('mode').options) option.disabled = !result.detected && ['reference', 'overlay'].includes(option.value);
   if (!result.detected && ['reference', 'overlay'].includes($('mode').value)) $('mode').value = 'residual';
   draw();
+}
+
+function renderFields(fields) {
+  const container = $('payload-fields');
+  container.replaceChildren();
+  $('field-count').textContent = `${fields.length} 项`;
+  $('payload-section').classList.toggle('hidden', !fields.length);
+  for (const field of fields) {
+    const item = document.createElement('article'); item.className = 'payload-field';
+    const label = document.createElement('div'); label.className = 'field-label'; label.textContent = field.label;
+    const key = document.createElement('div'); key.className = 'field-key'; key.textContent = field.key;
+    item.append(label);
+    if (field.label !== field.key) item.append(key);
+    if (field.value !== null && typeof field.value === 'object') {
+      const details = document.createElement('details'), summary = document.createElement('summary'), value = document.createElement('pre');
+      summary.textContent = Array.isArray(field.value) ? `展开数组 · ${field.value.length} 项` : `展开对象 · ${Object.keys(field.value).length} 项`;
+      value.textContent = WatermarkFields.format(field); details.append(summary, value); item.append(details);
+    } else {
+      const value = document.createElement('div'); value.className = 'field-value mono'; value.textContent = WatermarkFields.format(field); item.append(value);
+    }
+    container.append(item);
+  }
 }
 
 function buildBrowserReference(decoded, sourcePixels) {

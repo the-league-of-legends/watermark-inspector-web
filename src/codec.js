@@ -5,6 +5,7 @@
  */
 const WatermarkCodec = (() => {
   'use strict';
+  const SUPPORTED_PROTOCOLS = Object.freeze(['GHCV6', 'GHCV7']);
   const EPOCH = 1767225600, ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789_';
   const WIDTH = 544, HEIGHT = 512, ROWS = 64, COLS = 17, DATA_COLS = 16;
   const MIN_OBS = 5, MIN_PILOT = .35, MAX_CONTEXTS = 12;
@@ -177,7 +178,7 @@ const WatermarkCodec = (() => {
     }
     return right >= left && bottom >= top ? [left, top, right + 1, bottom + 1] : [0, 0, 0, 0];
   }
-  function integralImage(data, width, height, companion) {
+  function integralImage(data, width, height, companion, contrastLimit) {
     const stride = width + 1, sat = new Float64Array(stride * (height + 1));
     for (let y = 0; y < height; y++) {
       let rowSum = 0;
@@ -187,7 +188,7 @@ const WatermarkCodec = (() => {
         sat[(y + 1) * stride + x + 1] = rowSum + sat[y * stride + x + 1];
       }
     }
-    return {values: sat, width, height, stride};
+    return {values: sat, width, height, stride, contrastLimit};
   }
   function at(sat, x, y) {
     x = Math.max(0, Math.min(sat.width, x)); y = Math.max(0, Math.min(sat.height, y));
@@ -206,7 +207,8 @@ const WatermarkCodec = (() => {
       const px = x + col * cw, py = y + row * ch, mid = px + cw / 2, end = px + cw;
       const a = (at(sat, mid, py + ch) - at(sat, px, py + ch) - at(sat, mid, py) + at(sat, px, py)) / area;
       const b = (at(sat, end, py + ch) - at(sat, mid, py + ch) - at(sat, end, py) + at(sat, mid, py)) / area;
-      const d = Math.max(-12, Math.min(12, a - b)), id = (row % ROWS) * COLS + col % COLS;
+      // 强页面边缘的幅度远大于水印；回退限幅降低其权重，不增加观测或放宽校验。
+      const d = Math.max(-sat.contrastLimit, Math.min(sat.contrastLimit, a - b)), id = (row % ROWS) * COLS + col % COLS;
       const valid = px >= left && py >= top && px + cw <= right && py + ch <= bottom;
       if (valid) evidence[id]++;
       if (companion && !valid) continue;
@@ -226,7 +228,7 @@ const WatermarkCodec = (() => {
       shifts.push({x: i % COLS, y: Math.floor(i / COLS), pilot: energy > 0 ? dot / Math.sqrt(energy * 64) : 0});
     }
     shifts.sort((a, b) => b.pilot - a.pilot);
-    return {stats, scale, x, y, companion, shifts: shifts.slice(0, 2), score: shifts[0].pilot};
+    return {stats, scale, x, y, companion, contrastLimit: sat.contrastLimit, shifts: shifts.slice(0, 2), score: shifts[0].pilot};
   }
   function softScores(ctx, shift) {
     const n = new Float64Array(512), folded = new Float64Array(512), squared = new Float64Array(512), counts = new Float64Array(512);
@@ -315,10 +317,10 @@ const WatermarkCodec = (() => {
     }
     return finish(scan(Array.from(fine).sort((a, b) => a - b)));
   }
-  function decodeBest(data, width, height, bounds, scales, check, progress) {
+  function decodeBest(data, width, height, bounds, scales, check, progress, contrastLimit = 12) {
     for (const companion of [false, true]) {
       progress(companion ? '检查伴色色度通道' : '同步定位与纠错校验');
-      const sat = integralImage(data, width, height, companion), result = search(sat, bounds, companion, scales, check);
+      const sat = integralImage(data, width, height, companion, contrastLimit), result = search(sat, bounds, companion, scales, check);
       if (result) return result;
     }
     return null;
@@ -331,8 +333,14 @@ const WatermarkCodec = (() => {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width * height > 12000000 || rgba.length !== width * height * 4) return failure('invalid_image');
     try {
       const bounds = evidenceBounds(rgba, width, height);
-      let result = decodeBest(rgba, width, height, bounds, [1.5, 1.125, .75, 1], check, progress);
+      const fastScales = [1, 2 / 3, .75, .5, 1.125, 1.5];
+      let result = decodeBest(rgba, width, height, bounds, fastScales, check, progress);
+      if (!result) {
+        progress('抑制强背景干扰并重试局部截图');
+        result = decodeBest(rgba, width, height, bounds, fastScales, check, progress, 4);
+      }
       if (!result && options.fullSearch !== false) result = decodeBest(rgba, width, height, bounds, null, check, progress);
+      if (!result && options.fullSearch !== false) result = decodeBest(rgba, width, height, bounds, null, check, progress, 4);
       if (!result) return failure('no_unambiguous_valid_payload_or_insufficient_observations');
       if (result.ambiguous) return failure('conflicting_payloads');
       const best = result.best;
@@ -343,12 +351,12 @@ const WatermarkCodec = (() => {
         crcStatus: 'OK (integrity only; not authenticated)',
         diagnostics: {payloadHex, scale: best.ctx.scale, cellPhaseX: best.ctx.x, cellPhaseY: best.ctx.y,
           tileShiftCellsX: best.shift.x, tileShiftCellsY: best.shift.y,
-          companionRecovery: best.ctx.companion, pilotScore: best.shift.pilot}};
+          companionRecovery: best.ctx.companion, contrastLimit: best.ctx.contrastLimit, pilotScore: best.shift.pilot}};
     } catch (error) {
       if (error.message === 'decode_timeout') return failure('decode_timeout');
       throw error;
     }
   }
-  return {decodeImage, bchEncode, bchDecode, readPayload, makeTile, hex, fromHex, hash, evidenceBounds, WIDTH, HEIGHT};
+  return {supportedProtocols: SUPPORTED_PROTOCOLS, decodeImage, bchEncode, bchDecode, readPayload, makeTile, hex, fromHex, hash, evidenceBounds, WIDTH, HEIGHT};
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WatermarkCodec;

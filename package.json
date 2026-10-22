@@ -1,12 +1,12 @@
 {
   "name": "gamehelper-watermark-web",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "GHCV6 纯浏览器截图解码与纹理检查器，零运行时依赖",
+  "description": "通用诊断水印检查器：GHCV6/7、本地像素解码、动态载荷展示",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs && node scripts/serve.mjs",
-    "test": "node --test test/codec.test.cjs"
+    "test": "node --test test/*.test.cjs"
   },
   "engines": {
     "node": ">=18"
