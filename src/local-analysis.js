@@ -53,8 +53,12 @@ function clearImage() {
   for (const url of urls) URL.revokeObjectURL(url);
   urls = [];
   original = reference = overlay = pixels = residual = chroma = result = null;
-  selectedTile = null;
-  for (const id of ['original', 'enhanced', 'sample-actual', 'sample-reference']) { $(id).width = 1; $(id).height = 1; }
+  resetRegions();
+  renderFields([]);
+  $('details').textContent='';
+  for(const id of ['status','protocol','dimensions']) $(id).textContent='—';
+  $('filename').textContent='';
+  for (const id of ['original', 'enhanced', 'sample-actual', 'sample-reference', 'region-map']) { $(id).width = 1; $(id).height = 1; }
   $('file').value = '';
   $('content').classList.add('hidden');
   $('locator').classList.add('hidden');
@@ -64,6 +68,7 @@ function clearImage() {
 
 async function analyze(file) {
   if (!file || busy) return;
+  clearImage();
   if (file.size > 25 * 1024 * 1024) { showError('图片超过25 MB，请先缩小'); return; }
   void checkVersion(true);
   const turn = ++generation;
@@ -116,6 +121,7 @@ function renderResult(file) {
   result.fields = WatermarkFields.fromResult(result);
   result.toolBuild = BUILD_INFO.buildId;
   renderFields(result.fields);
+  setupRegions();
   $('details').textContent = JSON.stringify(result, null, 2);
   for (const option of $('mode').options) option.disabled = !result.detected && ['reference', 'overlay'].includes(option.value);
   if (!result.detected && ['reference', 'overlay'].includes($('mode').value)) $('mode').value = 'residual';
