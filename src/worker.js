@@ -1,10 +1,11 @@
 // 编解码源码由构建脚本内联在前面，Worker 不加载任何远端脚本。
 self.onmessage = event => {
-  const {buffer, width, height} = event.data;
+  const {buffer, width, height, rules} = event.data;
   let previous = 0;
   try {
     const result = WatermarkCodec.decodeImage(new Uint8ClampedArray(buffer), width, height, {
       timeoutMs: 60000,
+      schemas: WatermarkSchema.registry(rules || []),
       progress(stage) {
         const now = performance.now();
         if (now - previous > 100) { self.postMessage({type: 'progress', stage}); previous = now; }

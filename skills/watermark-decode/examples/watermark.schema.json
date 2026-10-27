@@ -1,0 +1,9 @@
+{
+  "projectKey": "example-diagnostics",
+  "schemaVersion": 1,
+  "fields": [
+    { "key": "accountId", "type": "uint", "bits": 63 },
+    { "key": "businessId", "type": "uint", "bits": 16 },
+    { "key": "capturedAt", "type": "time", "bits": 26, "epoch": 1767225600, "stepSeconds": 30 }
+  ]
+}

@@ -6,7 +6,7 @@ const baseSetBusy = setBusy;
 
 setBusy = function(value) {
   baseSetBusy(value);
-  for (const id of ['paste', 'paste-empty']) $(id).disabled = value;
+  for (const id of ['paste', 'paste-empty','load-rules']) $(id).disabled = value;
 };
 
 async function pasteImage() {
@@ -65,7 +65,7 @@ function setupRegions() {
   const available=regionLayout.status==='estimated';
   $('boxes').disabled=!available;
   $('region-summary').textContent=available
-    ? `已恢复完整信息。参考范围内推算有 ${regionLayout.completeCount} 个完整尺寸区域、${regionLayout.partialCount} 个边缘残片。`
+    ? `${result.protocol==='GHCV8'&&result.status!=='decoded'?'已校验水印，尚未解释业务字段。':'已恢复完整信息。'}参考范围内推算有 ${regionLayout.completeCount} 个完整尺寸区域、${regionLayout.partialCount} 个边缘残片。`
     : '无法确认水印数量和位置';
   $('region-list-count').textContent=available ? `· ${regionLayout.regions.length} 处` : '· 无法确认';
   $('region-list-panel').open=window.matchMedia('(min-width: 851px)').matches;

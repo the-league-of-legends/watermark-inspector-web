@@ -1,0 +1,9 @@
+{
+  "projectKey": "gamehelper",
+  "schemaVersion": 1,
+  "identityField": "userId",
+  "timeField": "capturedAt",
+  "timeWindowSeconds": 30,
+  "gameField": "gameId",
+  "logRouting": "existing-project-tools"
+}

@@ -1,0 +1,11 @@
+{
+  "projectKey": "example-shop",
+  "schemaVersion": 1,
+  "fields": [
+    {"key": "accountId", "type": "uint", "bits": 63},
+    {"key": "tenantId", "type": "uint", "bits": 8},
+    {"key": "state", "type": "enum", "bits": 2, "values": ["new", "open", "closed"]},
+    {"key": "tag", "type": "string", "maxBytes": 4},
+    {"key": "active", "type": "bool"}
+  ]
+}

@@ -1,35 +1,35 @@
-const {test} = require('node:test');
-const assert = require('node:assert/strict');
-const fields = require('../src/fields.js');
-
-test('GHCV6/7适配器保留账号字符串并区分字段含义', () => {
-  const value = {detected:true, protocol:'GHCV7', userId:'9223372036854775807', loggedIn:true,
-    gameId:20006, timeStartUtc:1792650540, timeEndUtc:1792650569, elapsedMs:300, diagnostics:{}};
-  const all = fields.fromResult(value);
-  assert.equal(all.find(f => f.key === 'userId').value, value.userId);
-  assert.equal(all.find(f => f.key === 'gameId').label, '子游戏 ID');
-  assert.equal(fields.fromResult({...value,protocol:'GHCV6'}).find(f => f.key === 'gameId').label, '游戏 ID（旧版主游戏）');
-  assert.equal(all.some(f => ['elapsedMs','diagnostics','protocol'].includes(f.key)), false);
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fields=require('../src/fields.js');
+test('GHCV6/7均保留原字段名、长账号与原始类型，不翻译或转时间',()=>{
+ for(const protocol of ['GHCV6','GHCV7']) {
+  const payload={userId:'9223372036854775807',loggedIn:true,gameId:20006,timeStartUtc:1792650540,timeEndUtc:1792650569};
+  const all=fields.fromResult({detected:true,protocol,...payload,elapsedMs:300,diagnostics:{},regionLayout:{regions:[]}});
+  assert.deepEqual(fields.toPayload(all),payload);
+  for(const f of all)assert.equal(f.label,f.key);
+  assert.equal(fields.format(all.find(f=>f.key==='loggedIn')),'true');
+  assert.equal(fields.format(all.find(f=>f.key==='timeStartUtc')),'1792650540');
+  assert.equal(fields.format(all.find(f=>f.key==='userId')),'"9223372036854775807"');
+ }
 });
-test('自定义名称、未知字段、嵌套值不丢失', () => {
-  const nested = {traceId:'12345678901234567890', extra:['x','y']};
-  const input = [{key:'tenant',label:'业务侧很长的名称'.repeat(20),type:'string',value:'<img src=x onerror=alert(1)>'},
-    {key:'details',label:'附加信息',type:'json',value:nested}];
-  assert.deepEqual(fields.fromResult({detected:true,fields:input}),input);
-  assert.deepEqual(JSON.parse(fields.format(input[1])),nested);
-  assert.equal(fields.fromResult({detected:true,sessionToken:'sample'})[0].label,'sessionToken');
-  assert.equal(fields.format(input[0]),input[0].value);
+test('自定义字段忽略业务名称与类型提示，嵌套对象和数组完整保留',()=>{
+ const input=[{key:'tenant',label:'定制名称',type:'datetime',value:'<img src=x onerror=alert(1)>'},
+ {key:'details',value:{traceId:'12345678901234567890',extra:['x','y'],empty:{}}}];
+ const all=fields.fromResult({detected:true,fields:input});
+ assert.equal(all[0].label,'tenant');assert.equal(all[0].type,'string');
+ assert.deepEqual(fields.toPayload(all),{tenant:input[0].value,details:input[1].value});
+ assert.deepEqual(JSON.parse(fields.format(all[1])),input[1].value);
 });
-test('失败结果没有字段；未登录和空值有明确显示', () => {
-  assert.deepEqual(fields.fromResult({detected:false,fields:[{key:'userId',value:'744'}]}),[]);
-  assert.equal(fields.format({type:'identity',value:null}),'未登录');
-  assert.equal(fields.format({value:null}),'—');
-  assert.equal(fields.format({value:false}),'否');
+test('失败不暴露字段，null、false、0、空字符串与空容器不丢失',()=>{
+ assert.deepEqual(fields.fromResult({detected:false,fields:[{key:'userId',value:'744'}]}),[]);
+ const payload={a:null,b:false,c:0,d:'',e:[],f:{}};
+ assert.deepEqual(fields.toPayload(fields.fromResult({detected:true,...payload})),payload);
+ for(const value of Object.values(payload))assert.equal(fields.format({value}),JSON.stringify(value,null,2));
 });
-
-test('未知键与原型同名时仍按普通字段处理',()=>{
-  for(const key of ['constructor','toString','__proto__']){
-    const value=JSON.parse('{"detected":true,"'+key+'":"business-value"}');
-    const field=fields.fromResult(value)[0];assert.equal(field.key,key);assert.equal(field.value,'business-value');
-  }
+test('原型同名字段与特殊字符键在JSON中原样保留',()=>{
+ const value=JSON.parse('{"detected":true,"constructor":"x","__proto__":"y","a.b":{"a[0]":"z"}}');
+ const output=fields.toPayload(fields.fromResult(value));
+ assert.equal(Object.getPrototypeOf(output),Object.prototype);
+ assert.equal(Object.hasOwn(output,'__proto__'),true);
+ assert.deepEqual(JSON.parse(JSON.stringify(output)),JSON.parse('{"constructor":"x","__proto__":"y","a.b":{"a[0]":"z"}}'));
 });

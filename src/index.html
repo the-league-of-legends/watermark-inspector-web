@@ -5,6 +5,27 @@
 <style>__STYLE__</style>
 <header><div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h1>水印检查器</h1><small id="supported-protocols">支持协议 GHCV6 / GHCV7 · WEB</small></div></div><div class="build-meta"><span id="build-version"></span><small id="version-state">图片本地处理 · 不上传</small></div><span class="local">纯浏览器 · 图片不上传</span><button class="quiet" id="quit">清空图片</button></header>
 <main><aside id="update-notice" class="update-notice hidden" role="status"><span id="update-message"></span><button id="update-page">更新检查器</button></aside><div class="intro"><h2>看看水印信息，重复在哪里。</h2><p>检查兼容协议的客户端截图、标注图及录屏抽帧。</p></div>
+<div class="toolbar"><button id="load-rules">载入项目规则</button><span id="rules-state" class="hint">GHCV8 需载入匹配的 watermark.schema.json；旧协议无需规则</span></div>
+<details class="rule-panel" id="rule-help"><summary>规则怎么写？</summary>
+<p>规则就像一张“表单模板”：告诉检查器，每一段数字叫什么、用什么类型、占多少空间。客户端写入和检查器读取时，要使用同一份规则。</p>
+<ol><li><code>projectKey</code>：固定的项目标识，例如 <code>my-project</code>。</li><li><code>schemaVersion</code>：规则版本，从 1 开始；字段有变化时升级版本，并保留旧规则。</li><li><code>fields</code>：按写入顺序列出字段。<code>key</code> 是你自己的字段名，<code>type</code> 是类型，<code>bits</code> 是占用的二进制位数。</li></ol>
+<p>保存为 <code>watermark.schema.json</code>，再点击“载入项目规则”。下面是一份占用 105 / 119 位的示例：</p>
+<pre tabindex="0" aria-label="项目规则示例">{
+  "projectKey": "my-project",
+  "schemaVersion": 1,
+  "fields": [
+    { "key": "accountId", "type": "uint", "bits": 63 },
+    { "key": "bizId", "type": "uint", "bits": 16 },
+    { "key": "capturedAt", "type": "time", "bits": 26,
+      "epoch": 1767225600, "stepSeconds": 30 }
+  ]
+}</pre>
+<p><code>uint</code> 是非负整数；63 位可容纳完整长账号。<code>time</code> 从 <code>epoch</code>（UTC 秒）起，每 <code>stepSeconds</code> 秒记一格；示例每格 30 秒。</p>
+<p>也支持 <code>int</code>（有符号整数）、<code>bool</code>（是／否，固定 1 位）、<code>enum</code>（用 <code>values</code> 列出选项），以及 <code>string</code>／<code>bytes</code>（用 <code>maxBytes</code> 限制字节数，另占长度位；中文和表情可能占多个字节）。所有字段合计最多 119 位，超出会报错，不会截断。</p>
+<p class="hint">规则指纹由内容自动计算，相当于模板编号。只改缩进不影响编号；修改字段、顺序或版本会改变编号。载入规则不能改变旧图片的写入格式，指纹匹配后才能解释 GHCV8 字段。GHCV6 / GHCV7 无需规则。</p>
+</details>
+<details class="rule-panel hidden" id="loaded-rules-panel"><summary>查看已载入的规则 <span id="loaded-rules-count"></span></summary><p class="hint">展开项目可查看实际载入的 JSON。再次载入会替换当前规则集合；需要同时使用的规则请一起选择。规则仅在当前页面保留，刷新后需重新载入。</p><div id="loaded-rules-list"></div></details>
+<input type="file" id="rules-file" accept="application/json,.json" multiple hidden>
 <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
 <div id="drop" class="drop" tabindex="0" role="button" aria-label="拖入或选择一张截图">
 <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="5" y="6" width="38" height="36" rx="6" stroke="currentColor" stroke-width="1.5"/><path d="m10 33 9-9 7 7 6-6 6 8M17 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -13,7 +34,10 @@
 <section id="content" class="hidden">
 <div class="statusbar" aria-live="polite"><div><label>识别状态</label><div class="value" id="status">—</div></div><div><label>载荷协议</label><div class="value mono" id="protocol">—</div></div><div><label>解码耗时 / 图片尺寸</label><div class="value mono" id="dimensions">—</div></div></div>
 <p id="decode-reason" class="notice hidden" role="status"></p>
-<section id="payload-section" class="payload-section hidden" aria-label="已校验载荷字段"><div class="payload-heading"><h3>载荷字段</h3><span id="field-count"></span><span>仅展示完整校验通过的信息</span></div><div id="payload-fields" class="payload-fields"></div></section>
+<section id="payload-section" class="payload-section hidden" aria-label="已校验载荷 JSON">
+<div class="payload-heading"><h3>完整载荷 JSON</h3><span>保留原始字段名、值与类型 · 仅展示校验通过的信息</span><button id="copy-payload">复制 JSON</button></div>
+<pre id="payload-json" tabindex="0" aria-label="完整载荷 JSON"></pre>
+</section>
 <div class="toolbar"><span class="filename" id="filename"></span><button id="paste">粘贴图片 ⌘V</button><button id="replace">更换图片</button><label class="barlabel"><span class="zoomlabel">缩放</span><select id="zoom" aria-label="缩放比例"><option value="fit">适应窗口</option><option value="1">100% · 原始像素</option><option value="2">200%</option></select></label><button id="download">导出位置标注图</button><button id="json">导出识别 JSON</button></div>
 <section id="region-overview" aria-label="重复水印分布">
 <div class="locate-summary"><div><h3>重复水印分布 <small>按纹理排列估算</small></h3><p id="region-summary" role="status"></p></div><label><input type="checkbox" id="boxes" checked> 显示位置框</label></div>

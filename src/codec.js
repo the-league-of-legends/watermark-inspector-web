@@ -5,7 +5,8 @@
  */
 const WatermarkCodec = (() => {
   'use strict';
-  const SUPPORTED_PROTOCOLS = Object.freeze(['GHCV6', 'GHCV7']);
+  const SUPPORTED_PROTOCOLS = Object.freeze(['GHCV6', 'GHCV7', 'GHCV8']);
+  const schemas = typeof WatermarkSchema !== 'undefined' ? WatermarkSchema : require('./schema.js');
   const EPOCH = 1767225600, ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789_';
   const WIDTH = 544, HEIGHT = 512, ROWS = 64, COLS = 17, DATA_COLS = 16;
   const MIN_SCALE = 1 / 3;
@@ -69,6 +70,7 @@ const WatermarkCodec = (() => {
       return value;
     }
     const version = read(4);
+    if (version === 8) return schemas.readEnvelope(bytes);
     if (version !== 6 && version !== 7) return null;
     const lowUid = read(32), timestamp = EPOCH + read(31), revision = EPOCH + read(24) * 60;
     const pageBits = read(42);
@@ -353,12 +355,12 @@ const WatermarkCodec = (() => {
       const best = result.best;
       if (best.minObs < MIN_OBS) return failure('insufficient_observations');
       const {payloadHex, ...payload} = best.payload;
-      return {detected: true, ...payload, correctedBits: best.correctedBits,
+      return schemas.resolve({detected: true, ...payload, correctedBits: best.correctedBits,
         minObservations: best.minObs, elapsedMs: Math.round(performance.now() - started),
         crcStatus: 'OK (integrity only; not authenticated)',
         diagnostics: {payloadHex, scale: best.ctx.scale, cellPhaseX: best.ctx.x, cellPhaseY: best.ctx.y,
           tileShiftCellsX: best.shift.x, tileShiftCellsY: best.shift.y,
-          companionRecovery: best.ctx.companion, contrastLimit: best.ctx.contrastLimit, pilotScore: best.shift.pilot}};
+          companionRecovery: best.ctx.companion, contrastLimit: best.ctx.contrastLimit, pilotScore: best.shift.pilot}}, options.schemas || []);
     } catch (error) {
       if (error.message === 'decode_timeout') return failure('decode_timeout');
       throw error;

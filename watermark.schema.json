@@ -1,0 +1,9 @@
+{
+  "projectKey": "gamehelper",
+  "schemaVersion": 1,
+  "fields": [
+    {"key": "userId", "type": "uint", "bits": 63},
+    {"key": "gameId", "type": "uint", "bits": 16},
+    {"key": "capturedAt", "type": "time", "bits": 26, "epoch": 1767225600, "stepSeconds": 30}
+  ]
+}
