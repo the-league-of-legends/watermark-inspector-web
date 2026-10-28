@@ -82,7 +82,21 @@ def decode_file(file,rules=None,project=None,seconds=5,box=None):
     if not result.get('detected'):
         reason=result.get('reason','decoder_error')
         status='timeout' if reason=='decode_timeout' else 'invalid_schema' if reason=='invalid_rules_or_input' else 'dependency_error' if reason=='node_unavailable' else 'not_detected'
-        return {'status':status,'source':source,'reason':reason,'warning':result.get('detail'), 'nonBlocking':True}
+        messages={
+            'conflicting_payloads':'读取到相互冲突的完整载荷，未选择账号；请分别处理不同主体的图片区域',
+            'insufficient_edge_observations':'边缘有效独立观测次数不足；请保留左右两侧及更多高度，或使用原图',
+            'insufficient_observations':'有效独立观测次数不足，未返回残缺账号',
+            'decode_timeout':'解码超过本次时间预算，已跳过并继续原排障流程',
+            'invalid_decode_budget':'解码时间预算无效',
+            'invalid_image':'图片尺寸或像素数据无效',
+            'no_unambiguous_valid_payload_or_insufficient_observations':'未恢复完整且唯一的兼容载荷；可能没有水印或已被裁剪、缩放、压缩破坏'
+        }
+        warning=messages.get(reason,result.get('detail') or reason)
+        hint=result.get('diagnostics',{}).get('edgeObservationHint')
+        if reason=='insufficient_edge_observations' and hint:
+            warning+=f"（每数据位最少{hint['minObservations']}次，要求{hint['requiredObservations']}次）"
+        return {'status':status,'source':source,'reason':reason,'warning':warning,
+                'elapsedMs':round((time.monotonic()-started)*1000),'nonBlocking':True}
     legacy=result.get('protocol') in {'GHCV6','GHCV7'}
     payload=({k:result[k] for k in ['userId','loggedIn','gameId','timeStartUtc','timeEndUtc','protocolRevisionTimeUtc']} if legacy else result.get('payload'))
     return {'status':'decoded' if legacy else result['status'],'protocol':result['protocol'],

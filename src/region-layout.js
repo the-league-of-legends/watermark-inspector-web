@@ -3,6 +3,14 @@ const WatermarkRegions = (() => {
   function estimate(result, width, height, bounds) {
     const unavailable = {status: 'unavailable', basis: 'estimated_repeat_geometry', independentlyVerified: false, regions: []};
     const d = result?.diagnostics;
+    if(result?.detected && d?.transportProfile==='edge-v1-preview' && Array.isArray(d.edgeRegions)) {
+      const regions=d.edgeRegions.filter(r=>[r.x,r.y,r.width,r.height].every(Number.isFinite)&&r.width>0&&r.height>0).map(r=>{
+        const x=Math.max(0,r.x),y=Math.max(0,r.y),right=Math.min(width,r.x+r.width),bottom=Math.min(height,r.y+r.height);
+        return {kind:r.x>=-1&&r.y>=-1&&r.x+r.width<=width+1&&r.y+r.height<=height+1?'complete':'partial',scale:1,
+          tileRect:{x:r.x,y:r.y,width:r.width,height:r.height},visibleRect:{x,y,width:right-x,height:bottom-y}};
+      }).filter(r=>r.visibleRect.width>0&&r.visibleRect.height>0).sort((a,b)=>a.tileRect.y-b.tileRect.y||a.tileRect.x-b.tileRect.x).map((r,i)=>({...r,id:i+1}));
+      return {status:'estimated',basis:'estimated_edge_packet_geometry',independentlyVerified:false,referenceBounds:{x:0,y:0,width,height},completeCount:regions.filter(r=>r.kind==='complete').length,partialCount:regions.filter(r=>r.kind==='partial').length,regions};
+    }
     if (!result?.detected || !d || ![width,height,d.scale,d.cellPhaseX,d.cellPhaseY,d.tileShiftCellsX,d.tileShiftCellsY].every(Number.isFinite)
       || width <= 0 || height <= 0 || width*height > 12000000 || d.cellPhaseX < 0 || d.cellPhaseY < 0 || d.cellPhaseX > width || d.cellPhaseY > height || d.scale < 1/3 - 1e-9 || d.scale > 1.5 + 1e-9
       || !Number.isInteger(d.tileShiftCellsX) || d.tileShiftCellsX < 0 || d.tileShiftCellsX >= 17

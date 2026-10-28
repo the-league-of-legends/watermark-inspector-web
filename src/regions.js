@@ -60,12 +60,12 @@ function setupRegions() {
   const bounds=result.detected ? WatermarkCodec.evidenceBounds(pixels.data,original.width,original.height) : null;
   regionLayout=WatermarkRegions.estimate(result,original.width,original.height,bounds);
   result.regionLayout=regionLayout;
-  selectedRegionId=null; selectedTile=codingTiles()[0] || null;
+  selectedRegionId=null; selectedTile=result.diagnostics?.transportProfile==='edge-v1-preview'?null:codingTiles()[0] || null;
   $('region-list').replaceChildren();
   const available=regionLayout.status==='estimated';
   $('boxes').disabled=!available;
   $('region-summary').textContent=available
-    ? `${result.protocol==='GHCV8'&&result.status!=='decoded'?'已校验水印，尚未解释业务字段。':'已恢复完整信息。'}参考范围内推算有 ${regionLayout.completeCount} 个完整尺寸区域、${regionLayout.partialCount} 个边缘残片。`
+    ? `${result.protocol==='GHCV8'&&result.status!=='decoded'?'已校验水印，尚未解释业务字段。':'已恢复完整信息。'}${result.diagnostics?.transportProfile==='edge-v1-preview'?'左右条带合并解码。':''}参考范围内推算有 ${regionLayout.completeCount} 个完整尺寸区域、${regionLayout.partialCount} 个边缘残片。`
     : '无法确认水印数量和位置';
   $('region-list-count').textContent=available ? `· ${regionLayout.regions.length} 处` : '· 无法确认';
   $('region-list-panel').open=window.matchMedia('(min-width: 851px)').matches;
@@ -84,7 +84,7 @@ function selectRegion(id) {
   const {x,y,width,height}=region.visibleRect;
   $('region-selection').textContent=`第 ${id} 区 · ${region.kind==='complete'?'完整尺寸区域':'边缘残片'} · 原图位置 (${Math.round(x)}, ${Math.round(y)})，${Math.round(width)} × ${Math.round(height)} 像素`;
   for(const button of $('region-list').children)button.setAttribute('aria-pressed',String(Number(button.dataset.region)===id));
-  selectedTile=region.kind==='complete' ? {...region.tileRect,scale:region.scale} : null;
+  selectedTile=result.diagnostics?.transportProfile!=='edge-v1-preview' && region.kind==='complete' ? {...region.tileRect,scale:region.scale} : null;
   draw();
   // 原始像素放大后，将所选区域移到图片视口内，不滚动整张页面。
   if($('zoom').value!=='fit') {

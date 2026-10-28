@@ -329,16 +329,203 @@ const WatermarkCodec = (() => {
     }
     return null;
   }
+  // Edge preview v1: locate public 64-bit headers in the two guard-separated luminance strips.
+  // Observations count distinct physical cells, never retries or repeated scans. BCH and CRC
+  // validate the entire payload; this is integrity checking, not authentication.
+  // Edge-only ROI: tolerate a few antialiased frame pixels. This is a location hint,
+  // never evidence of a decoded watermark; body search keeps its original bounds.
+  function edgeBounds(data,width,height,bounds) {
+    const active=[];const threshold=Math.max(3,Math.ceil(height*.01));
+    for(let x=0;x<width;x++) {
+      const first=x*4;let varied=0;
+      for(let y=1;y<height;y++) {const p=(y*width+x)*4;
+        if(data[p]!==data[first]||data[p+1]!==data[first+1]||data[p+2]!==data[first+2])varied++;
+        if(varied>=threshold){active.push(x);break;}
+      }
+    }
+    return active.length?[active[0],bounds[1],active[active.length-1]+1,bounds[3]]:bounds;
+  }
+  function decodeEdges(data,width,height,bounds,check){
+ const HEADER=0x4748434531d39a65n,signs=Array.from({length:64},(_,i)=>Number(HEADER>>BigInt(i)&1n)?-1:1);
+ const signSum=signs.reduce((a,b)=>a+b,0),signEnergy=64-signSum*signSum/64;
+ const candidates=[];
+ for(const side of ['left','right']){
+  const boundary=side==='left'?bounds[0]:bounds[2],margin=Math.min(96,Math.max(32,Math.ceil((bounds[2]-bounds[0])*.045)));
+  const l=Math.max(0,side==='left'?boundary-3:boundary-margin),r=Math.min(width,side==='left'?boundary+margin:boundary+3),bw=r-l;
+  if(bw<10)continue;
+  const rows=new Float64Array(height*(bw+1));
+  for(let y=0;y<height;y++){let sum=0;for(let x=0;x<bw;x++){const p=(y*width+l+x)*4;sum+=(data[p]+2*data[p+1]+data[p+2])/4;rows[y*(bw+1)+x+1]=sum;}}
+  const hx=(y,x)=>{x=Math.max(0,Math.min(bw,x-l));const i=Math.floor(x),f=x-i,a=y*(bw+1);return rows[a+i]*(1-f)+rows[a+Math.min(bw,i+1)]*f;};
+  function lines(x,cw){
+   const residual=Array.from({length:4},()=>new Float64Array(height+1)),background=Array.from({length:4},()=>new Float64Array(height+1));
+   for(let y=0;y<height;y++){
+    const gl=(hx(y,x-.1*cw)-hx(y,x-.4*cw))/(cw*.3),gr=(hx(y,x+4.4*cw)-hx(y,x+4.1*cw))/(cw*.3);
+    for(let c=0;c<4;c++){
+     const bg=gl+(gr-gl)*(c+.75)/4.5;
+     const value=(hx(y,x+(c+.85)*cw)-hx(y,x+(c+.15)*cw))/(cw*.7);
+     residual[c][y+1]=residual[c][y]+value-bg;background[c][y+1]=background[c][y]+bg;
+    }
+   }
+   return {residual,background};
+  }
+  const at=(a,y)=>{y=Math.max(0,Math.min(height,y));const i=Math.floor(y);return a[i]+(y-i)*(a[Math.min(height,i+1)]-a[i]);};
+  const avg=(a,y,ch)=>(at(a,y+ch)-at(a,y))/ch;
+  function header(v,y,ch){
+   let dot=0,sum=0,en=0,t2=0,dt=0;
+   for(let row=0;row<16;row++)for(let c=0;c<4;c++){
+    const z=avg(v.residual[c],y+row*ch,ch),bg=avg(v.background[c],y+row*ch,ch),sign=signs[row*4+c];
+    dot+=sign*z;sum+=z;en+=z*z;const target=(sign+1)/2-bg/255;t2+=target*target;dt+=z*target;
+   }
+   const score=(dot-signSum*sum/64)/Math.sqrt(Math.max(1e-9,(en-sum*sum/64)*signEnergy));
+   return {score,alpha:dt/Math.max(t2,1e-9)};
+  }
+  const local=[];
+  for(let cw=1.75;cw<=14;cw+=.25){
+   check();
+   for(let off=cw*.25;off<=cw*1.5+1;off+=Math.max(1,cw/4)){
+    check();const x=side==='left'?boundary+off:boundary-off-4*cw;
+    if(x-.4*cw<l||x+4.4*cw>r)continue;
+    const v=lines(x,cw),peaks=[];
+    for(let y=Math.max(0,bounds[1]);y+16*cw<=bounds[3];y+=Math.max(1,cw*.75)){
+     const h=header(v,y,cw);if(h.score>.64&&h.alpha>=2&&h.alpha<=28)peaks.push({y,...h});
+    }
+    peaks.sort((a,b)=>b.score-a.score);const kept=[];for(const p of peaks){if(!kept.some(q=>Math.abs(q.y-p.y)<cw*12))kept.push(p);if(kept.length>=5)break;}
+    for(const p of kept)local.push({x,cw,side,...p,peaks:kept});
+   }
+  }
+  local.sort((a,b)=>b.score-a.score);const selected=[];
+  for(const q of local){if(!selected.some(p=>Math.abs(p.cw-q.cw)<.4&&Math.abs(p.x-q.x)<2&&Math.abs(p.y-q.y)<q.cw*8))selected.push(q);if(selected.length>=6)break;}
+  for(const seed of selected){
+   const heights=[seed.cw];for(const p of seed.peaks){const dist=Math.abs(p.y-seed.y),n=Math.round(dist/(152*seed.cw));if(n>=1&&n<=8){const ch=dist/(152*n);if(Math.abs(ch/seed.cw-1)<.04)heights.push(ch);}}
+   let best=null;
+   for(const base of heights)for(const dc of [-.012,-.006,0,.006,.012])for(const dx of [-.5,0,.5]){
+    check();const ch=base+dc,x=seed.x+dx,v=lines(x,seed.cw);
+    for(const dy of [-1,-.5,0,.5,1]){
+     const origin=((seed.y+dy)%(152*ch)+152*ch)%(152*ch),headers=[];
+     for(let y=origin-152*ch;y+16*ch<=height;y+=152*ch)if(y>=0)headers.push({y,...header(v,y,ch)});
+     const good=headers.filter(h=>h.score>.68&&h.alpha>=2&&h.alpha<=28);
+     const score=good.reduce((a,b)=>a+b.score,0);
+     if(good.length&&(!best||score>best.score))best={x,cw:seed.cw,ch,side,origin,score,headers:good,v};
+    }
+   }
+   if(best)candidates.push(best);
+  }
+ }
+ const groups=[];
+ candidates.sort((a,b)=>b.score-a.score);
+ for(const candidate of candidates){
+  check();if(groups.some(g=>g.side===candidate.side&&Math.abs(g.x-candidate.x)<2&&Math.abs(g.ch-candidate.ch)<.04))continue;
+  groups.push(candidate);if(groups.length>=4)break;
+ }
+ const attempts=[];let observationHint=null;
+ for(const subset of [groups,groups.filter(g=>g.side==='left'),groups.filter(g=>g.side==='right')]){
+  const chosen=[];for(const g of subset) {
+    // Narrow crops can expose one strip to both searches. Overlapping columns
+    // are the same physical evidence even when their left/right labels differ.
+    const duplicate=chosen.some(p=>p.side===g.side || Math.min(p.x+4*p.cw,g.x+4*g.cw)-Math.max(p.x,g.x)>Math.min(p.cw,g.cw)*2);
+    if(!duplicate)chosen.push(g);
+  }
+  const sums=new Float64Array(512),counts=new Float64Array(512),regions=[];
+  for(const g of chosen){
+   const alpha=g.headers.map(h=>h.alpha).sort((a,b)=>a-b)[Math.floor(g.headers.length/2)];
+   const at=(a,y)=>{y=Math.max(0,Math.min(height,y));const i=Math.floor(y);return a[i]+(y-i)*(a[Math.min(height,i+1)]-a[i]);};
+   const avg=(a,y,ch)=>(at(a,y+ch)-at(a,y))/ch;
+   for(let top=g.origin-152*g.ch;top<height;top+=152*g.ch){
+    let used=false;
+    for(let p=0;p<512;p++){
+     const row=16+Math.floor(p/4),col=p%4,y=top+row*g.ch;if(y<bounds[1]||y+g.ch>bounds[3])continue;
+     const bg=avg(g.v.background[col],y,g.ch),delta=avg(g.v.residual[col],y,g.ch);
+     const score=delta-alpha*(.5-bg/255),bit=(p*73+19)&511;
+     sums[bit]+=Math.max(-alpha,Math.min(alpha,score))*(hash(p)&1?-1:1);counts[bit]++;used=true;
+    }
+    if(used)regions.push({side:g.side,x:g.x-g.cw*.5,y:top,width:g.cw*5,height:g.ch*152});
+   }
+  }
+  const observed=Math.min(...counts);
+  if(chosen.length && chosen.every(g=>g.headers.length>=2) && (!observationHint||observed>observationHint.minObservations))
+    observationHint={minObservations:observed,requiredObservations:MIN_OBS,sides:chosen.map(g=>g.side)};
+  // 观测不足的单侧只参与冲突排除，不得直接输出或补足另一账号的计数。
+  if(observed<1)continue;
+  const hard=Uint8Array.from(sums,v=>v<0?1:0),rank=Array.from({length:512},(_,i)=>i).sort((a,b)=>Math.abs(sums[a])-Math.abs(sums[b])).slice(0,8);
+  const variants=[[]];for(let i=0;i<8;i++){variants.push([rank[i]]);for(let j=i+1;j<8;j++)variants.push([rank[i],rank[j]]);}
+  for(const flips of variants){check();const bits=hard.slice();for(const i of flips)bits[i]^=1;const word=new Uint8Array(64);for(let i=0;i<512;i++)word[i>>3]|=bits[i]<<(i&7);
+   const bch=bchDecode(word);if(!bch)continue;const payload=readPayload(bch.message);if(!payload)continue;
+   attempts.push({payload,minObs:Math.min(...counts),correctedBits:bch.correctedCount,edgeRegions:regions,geometry:chosen.map(g=>({side:g.side,x:g.x,cellWidth:g.cw,cellHeight:g.ch,origin:g.origin,headerScore:g.score}))});
+   // 硬判决已通过且纠错位数足够小：两位翻转搜索不可能越过BCH码距到达另一码字。
+   // 继续检查其他物理条带；只省略当前观测集的等价重试。
+   if(flips.length===0 && bch.correctedCount<=37)break;
+  }
+ }
+ if(!attempts.length)return {found:null,observationHint,candidates:groups.map(g=>({side:g.side,cw:g.cw,ch:g.ch,x:g.x,origin:g.origin,score:g.score}))};
+ return {found:attempts.find(x=>x.minObs>=MIN_OBS)||null,ambiguous:new Set(attempts.map(x=>x.payload.payloadHex)).size>1,observationHint,candidates:groups.map(g=>({side:g.side,cw:g.cw,ch:g.ch,x:g.x,origin:g.origin,score:g.score}))};
+}
+
+  // 边缘定位头只提供几何提示，不提供身份。枚举原始整数格宽，覆盖不同像素密度；
+  // 邻域补偿截图插值带来的亚像素误差。每个候选仍走完整正文同步、BCH、CRC校验。
+  function edgeScaleHints(edge,height) {
+    const heights=[];
+    for(const g of edge?.candidates||[]) {
+      if(g.score<1.3 || !Number.isFinite(g.ch) || heights.some(h=>Math.abs(h-g.ch)<.05))continue;
+      heights.push(g.ch);if(heights.length>=2)break;
+    }
+    const scales=new Set();
+    for(const h of heights)for(let nativeCell=1;nativeCell<=102;nativeCell++)for(const step of [-2,-1,0,1,2]) {
+      const scale=h/nativeCell+step/height;
+      if(scale>=MIN_SCALE && scale<=1.5)scales.add(Math.round(scale*1e9)/1e9);
+    }
+    return Array.from(scales);
+  }
+
   function decodeImage(rgba, width, height, options = {}) {
-    const started = performance.now(), deadline = started + (options.timeoutMs || 60000);
+    const started = performance.now(), timeoutMs=options.timeoutMs??60000, deadline = started + timeoutMs;
     const check = () => { if (performance.now() >= deadline) throw Error('decode_timeout'); };
     const progress = options.progress || (() => {});
-    const failure = reason => ({detected: false, reason, elapsedMs: Math.round(performance.now() - started)});
+    let edgeHint=null;
+    const failure = reason => ({detected: false, reason, ...(edgeHint?{diagnostics:{edgeObservationHint:edgeHint}}:{}),elapsedMs: Math.round(performance.now() - started)});
+    if(!Number.isFinite(timeoutMs)||timeoutMs<=0)return failure('invalid_decode_budget');
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width * height > 12000000 || rgba.length !== width * height * 4) return failure('invalid_image');
     try {
       const bounds = evidenceBounds(rgba, width, height);
-      const fastScales = [1, 2 / 3, .75, .5, 1.125, 1.5];
-      let result = decodeBest(rgba, width, height, bounds, fastScales, check, progress);
+      check();
+      const edgeStarted=performance.now();
+      progress('定位左右边缘条带');
+      let edge = null;
+      const edgeDeadline = Math.min(deadline, performance.now() + Math.min(1800, timeoutMs * .4));
+      try { edge = decodeEdges(rgba, width, height, edgeBounds(rgba,width,height,bounds), () => { check(); if (performance.now() >= edgeDeadline) throw Error('edge_budget'); }); }
+      catch (e) { if (e.message !== 'edge_budget') throw e; }
+      const edgeMs=Math.round(performance.now()-edgeStarted);
+      edgeHint=edge?.observationHint||null;
+      if (edge?.ambiguous) return failure('conflicting_payloads');
+      if (edge?.found) {
+        const best = edge.found, {payloadHex, ...payload} = best.payload;
+        // A bounded independent body check rejects any observed contradictory identity.
+        // Lack of a second channel does not invalidate a fully checked edge payload.
+        const bodyDeadline = Math.min(deadline,performance.now()+1200);
+        try {
+          const body=decodeBest(rgba,width,height,bounds,[1,2/3,.75,.5,.6,.8,8/9,1.125,1.5],()=>{check();if(performance.now()>=bodyDeadline)throw Error('body_budget');},progress);
+          if(body && (body.ambiguous || body.best.payload.payloadHex!==payloadHex))return failure('conflicting_payloads');
+        } catch(e) { if(e.message!=='body_budget')throw e; }
+        check();
+
+        return schemas.resolve({detected:true,...payload,correctedBits:best.correctedBits,
+          minObservations:best.minObs,elapsedMs:Math.round(performance.now()-started),
+          crcStatus:'OK (integrity only; not authenticated)',
+          diagnostics:{payloadHex,transportProfile:'edge-v1-preview',edgeRegions:best.edgeRegions,edgeGeometry:best.geometry}}, options.schemas || []);
+      }
+      // 优先搜索常见缩放；1440→1280为8/9，粗网格易被背景误导而漏掉此精确比例。
+      const fastScales = [1, 2 / 3, .75, .5, .6, .8, 8 / 9, 1.125, 1.5];
+      let result=null, searchStrategy='standard_body', hintedBodyMs=0;
+      const hintedScales=edgeScaleHints(edge,height);
+      if(hintedScales.length) {
+        progress('利用边缘几何定位正文');
+        const hintStarted=performance.now(),hintDeadline=Math.min(deadline,hintStarted+Math.min(2500,timeoutMs*.4));
+        try {
+          result=decodeBest(rgba,width,height,bounds,hintedScales,()=>{check();if(performance.now()>=hintDeadline)throw Error('hint_budget');},progress);
+        } catch(e) {if(e.message!=='hint_budget')throw e;}
+        hintedBodyMs=Math.round(performance.now()-hintStarted);
+        if(result)searchStrategy='edge_geometry_guided_body';
+      }
+      if(!result)result = decodeBest(rgba, width, height, bounds, fastScales, check, progress);
       if (!result) {
         progress('抑制强背景干扰并重试局部截图');
         result = decodeBest(rgba, width, height, bounds, fastScales, check, progress, 4);
@@ -350,15 +537,16 @@ const WatermarkCodec = (() => {
       }
       if (!result && options.fullSearch !== false) result = decodeBest(rgba, width, height, bounds, null, check, progress);
       if (!result && options.fullSearch !== false) result = decodeBest(rgba, width, height, bounds, null, check, progress, 4);
-      if (!result) return failure('no_unambiguous_valid_payload_or_insufficient_observations');
+      if (!result) return failure(edgeHint && edgeHint.minObservations<MIN_OBS?'insufficient_edge_observations':'no_unambiguous_valid_payload_or_insufficient_observations');
       if (result.ambiguous) return failure('conflicting_payloads');
       const best = result.best;
       if (best.minObs < MIN_OBS) return failure('insufficient_observations');
       const {payloadHex, ...payload} = best.payload;
+      check();
       return schemas.resolve({detected: true, ...payload, correctedBits: best.correctedBits,
         minObservations: best.minObs, elapsedMs: Math.round(performance.now() - started),
         crcStatus: 'OK (integrity only; not authenticated)',
-        diagnostics: {payloadHex, scale: best.ctx.scale, cellPhaseX: best.ctx.x, cellPhaseY: best.ctx.y,
+        diagnostics: {payloadHex, searchStrategy, stageTimings:{edgeMs,hintedBodyMs}, scale: best.ctx.scale, cellPhaseX: best.ctx.x, cellPhaseY: best.ctx.y,
           tileShiftCellsX: best.shift.x, tileShiftCellsY: best.shift.y,
           companionRecovery: best.ctx.companion, contrastLimit: best.ctx.contrastLimit, pilotScore: best.shift.pilot}}, options.schemas || []);
     } catch (error) {

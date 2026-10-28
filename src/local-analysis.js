@@ -1,6 +1,6 @@
 // 本文件只使用用户选定的图片像素，不使用文件名、账号缓存、本机日志或网络。
 let activeWorker = null, rejectActive = null, lastInputFile=null;
-let projectRules=[];
+let projectRules=typeof BUNDLED_RULES==='undefined'?[]:BUNDLED_RULES;
 const workerURL = URL.createObjectURL(new Blob([WORKER_SOURCE], {type: 'text/javascript'}));
 
 function decodeInWorker(data, width, height, turn) {
@@ -110,25 +110,31 @@ function renderResult(file) {
   $('drop').classList.add('hidden'); $('content').classList.remove('hidden');
   $('filename').textContent = file.name;
   const unresolved=result.protocol==='GHCV8'&&result.status!=='decoded';
-  $('status').textContent = result.detected ? (unresolved?'水印已校验 · 无法解释字段':'已校验 · 完整载荷') : '未识别';
+  $('status').textContent = result.detected ? (unresolved?(result.status==='unknown_schema'?'水印已校验 · 缺少匹配规则':'水印已校验 · 规则数据无效'):'已校验 · 完整载荷') : '未识别';
   $('status').className = 'value ' + (result.detected ? 'good' : 'bad');
-  $('protocol').textContent = result.protocol || '—';
+  $('protocol').textContent = (result.protocol || '—') + (result.diagnostics?.transportProfile==='edge-v1-preview'?' · 左右边缘预览版':'');
   const failureReasons = {
     decode_timeout: '在本次时间预算内未恢复完整载荷。可以尝试原始截图或保留更多清晰画面。',
     conflicting_payloads: '检测到相互冲突的载荷，未选择账号。对比拼图请分别截取各自区域后重试。',
     insufficient_observations: '有效观测不足，未返回任何残缺字段。请尝试保留更大的原始画面。',
-    invalid_image: '图片尺寸或像素数据无效。'
+    invalid_image: '图片尺寸或像素数据无效。',
+    invalid_decode_budget: '解码时间预算无效，请使用正数时间预算。'
   };
   $('decode-reason').classList.toggle('hidden', result.detected && !unresolved);
   $('decode-reason').textContent = unresolved ? `规则指纹 ${result.schemaFingerprint}：${result.status==='unknown_schema'?'请载入该项目匹配版本的规则文件；不能使用不匹配的规则解释字段':'业务数据未通过规则范围或补零检查，未输出字段'}` : result.detected ? '' : (failureReasons[result.reason] || '未恢复完整且唯一的兼容载荷。图片可能没有水印，或信号受到缩放、遮挡和压缩影响。');
+  if(!result.detected && !['conflicting_payloads','decode_timeout'].includes(result.reason) && result.diagnostics?.edgeObservationHint) {
+    const h=result.diagnostics.edgeObservationHint;
+    if(h.minObservations<h.requiredObservations)$('decode-reason').textContent=
+      `发现疑似边缘定位信号，但每个数据位最少只有 ${h.minObservations} 次独立观测，当前要求至少 ${h.requiredObservations} 次。未校验出身份；请保留左右两侧和更多高度，或使用完整原图。`;
+  }
   $('dimensions').textContent = `${(result.elapsedMs / 1000).toFixed(2)} s / ${result.width} × ${result.height}`;
   result.fields = WatermarkFields.fromResult(result);
   result.toolBuild = BUILD_INFO.buildId;
   renderPayload(result.fields);
   setupRegions();
   $('details').textContent = JSON.stringify(result, null, 2);
-  for (const option of $('mode').options) option.disabled = !result.detected && ['reference', 'overlay'].includes(option.value);
-  if (!result.detected && ['reference', 'overlay'].includes($('mode').value)) $('mode').value = 'residual';
+  for (const option of $('mode').options) option.disabled = (!result.detected || !reference) && ['reference', 'overlay'].includes(option.value);
+  if ((!result.detected || !reference) && ['reference', 'overlay'].includes($('mode').value)) $('mode').value = 'residual';
   draw();
 }
 
@@ -149,6 +155,7 @@ $('copy-payload').onclick = async () => {
 };
 
 function buildBrowserReference(decoded, sourcePixels) {
+  if (decoded.diagnostics?.transportProfile==='edge-v1-preview') return {reference:null,overlay:null};
   const d = decoded.diagnostics, tile = WatermarkCodec.makeTile(WatermarkCodec.fromHex(d.payloadHex));
   const plane = new Float32Array(544 * 512); let mean = 0;
   for (let i = 0; i < plane.length; i++) { plane[i] = tile[i * 4 + 2] - (tile[i * 4] + tile[i * 4 + 1]) / 2; mean += plane[i]; }
@@ -208,3 +215,5 @@ $('rules-file').onchange=async event=>{
   } catch(error){if(turn===generation)showError('规则载入失败：'+error.message)}
   finally {if(turn===generation)setBusy(false);$('rules-file').value=''}
 };
+
+if(projectRules.length)renderLoadedRules(WatermarkSchema.registry(projectRules),projectRules.map(rule=>({rule,name:'内置规则（仅按指纹匹配）',fingerprint:WatermarkSchema.compile(rule).fingerprint})));

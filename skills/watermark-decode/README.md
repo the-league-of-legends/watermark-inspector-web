@@ -42,6 +42,10 @@ node skills/watermark-decode/examples/encode-demo.cjs /tmp/watermark-demo
 
 ## 视频与证据来源
 
-本工具入口接收图片／单帧，不直接遍历视频。可与 `bugfix-local-evidence` 一起定位时间段，再用 FFmpeg 保留原分辨率 PNG，并记录实际帧时间。该 Skill 默认缩放 JPEG 是供人阅读的，不应替代水印原始输入。
+本工具入口接收图片／单帧，不直接遍历视频。TAPD分析时主动联动 `bugfix-local-evidence video --original-png --count 12`，从清单读取原分辨率PNG和实际帧时间，逐帧解码。每张图最多5秒、每条Bug共享30秒解码预算；失败提醒但不阻断。完整角色判断、候选选择和智研／蓝鲸日志来源要求见 [TAPD流程](references/tapd-workflow.md)。默认缩放JPEG供人阅读，不应替代水印原始输入。
 
 报告应写明图片或抽帧来源、帧时间、完整校验状态及身份是否用于后续查询。CRC仅检错，不是签名；不得从OCR、文件名、已知账号补猜失败结果。所有媒体在本机处理。
+
+## 边缘解码更新
+
+自动利用边缘定位头加速未知比例的正文搜索，兼容正文与边缘独立解码；详见[限制与失败处理](references/edge-decoding.md)。不保证单侧裁图可读，失败结果包含具体warning并继续原流程。
