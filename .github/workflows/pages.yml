@@ -23,10 +23,12 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
+      - name: Install pinned local OCR dependencies
+        run: npm ci --ignore-scripts
+      - name: Build static page and local OCR assets
+        run: npm run build
       - name: Test protocol and decoder
         run: npm test
-      - name: Build self-contained page
-        run: npm run build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:

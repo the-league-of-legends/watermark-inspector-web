@@ -4,7 +4,7 @@ self.onmessage = event => {
   let previous = 0;
   try {
     const result = WatermarkCodec.decodeImage(new Uint8ClampedArray(buffer), width, height, {
-      timeoutMs: 60000,
+      timeoutMs: 5000,
       schemas: WatermarkSchema.registry(rules || []),
       progress(stage) {
         const now = performance.now();

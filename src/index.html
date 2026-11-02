@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; img-src blob: data:; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; img-src blob: data:; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
 <title>水印检查器 · GameHelper</title>
 <style>__STYLE__</style>
 <header><div class="brand"><div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h1>水印检查器</h1><small id="supported-protocols">支持协议 GHCV6 / GHCV7 · WEB</small></div></div><div class="build-meta"><span id="build-version"></span><small id="version-state">图片本地处理 · 不上传</small></div><span class="local">纯浏览器 · 图片不上传</span><button class="quiet" id="quit">清空图片</button></header>
@@ -38,6 +38,7 @@
 <div class="payload-heading"><h3>完整载荷 JSON</h3><span>保留原始字段名、值与类型 · 仅展示校验通过的信息</span><button id="copy-payload">复制 JSON</button></div>
 <pre id="payload-json" tabindex="0" aria-label="完整载荷 JSON"></pre>
 </section>
+<section id="visible-section" class="payload-section hidden" aria-label="未经水印校验的侧边明文候选"><h3>备用身份线索 · 侧边明文</h3><p id="visible-status" role="status"></p><p class="hint">仅限当前 GameHelper 项目的侧边账号布局。浏览器 OCR 与 Skill 的 AI 读图分别判断；都不是完整性校验。不能据此推导游戏或截图时间，普通界面数字不能作为身份。</p><details><summary>调整手机画面范围（原图像素）</summary><p>自动范围仅去除均匀暗色外框；拼图请先分别截出异常画面。可按原图填写左、上、右、下坐标。</p><label><input id="visible-custom" type="checkbox">使用指定范围</label><div class="roi-controls"><label>左<input type="number" min="0" id="roi-l"></label><label>上<input type="number" min="0" id="roi-t"></label><label>右<input type="number" min="0" id="roi-r"></label><label>下<input type="number" min="0" id="roi-b"></label></div><button id="visible-select" aria-pressed="false">在原图框选</button><button id="visible-retry">重新读取侧边</button></details><div id="visible-results"></div></section>
 <div class="toolbar"><span class="filename" id="filename"></span><button id="paste">粘贴图片 ⌘V</button><button id="replace">更换图片</button><label class="barlabel"><span class="zoomlabel">缩放</span><select id="zoom" aria-label="缩放比例"><option value="fit">适应窗口</option><option value="1">100% · 原始像素</option><option value="2">200%</option></select></label><button id="download">导出位置标注图</button><button id="json">导出识别 JSON</button></div>
 <section id="region-overview" aria-label="重复水印分布">
 <div class="locate-summary"><div><h3>重复水印分布 <small>按纹理排列估算</small></h3><p id="region-summary" role="status"></p></div><label><input type="checkbox" id="boxes" checked> 显示位置框</label></div>

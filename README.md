@@ -82,3 +82,11 @@ dist/index.html       可分享/部署的完整页面
 - 两端常量和测试向量通过 `node scripts/generate-native.mjs watermark.schema.json output-dir` 生成。当前GameHelper原生业务绑定固定为userId63、gameId16、capturedAt26；改变该绑定形状需显式修改原生业务取值，不允许静默截断。其他项目可使用通用JS编码接口与生成的位定义接入。
 - 显式同步各仓库：`node scripts/sync-consumers.mjs --android /path/android --ios /path/ios --bugfix /path/ai-auto-bugfix`。不传目标不会扫描或写入其他工程。命令只同步水印规则和生成资源。
 - 字节/位低位先行、归一化与指纹算法详见 `skills/watermark-decode/references/schema.md`；规则指纹不是身份签名。源规则变更必须升版本，保留历史规则与跨语言向量。
+
+## 侧边明文备用（本地1.4.0）
+
+水印失败后自动尝试浏览器Tesseract.js 7.0.0。结果单独显示“单侧OCR候选／双侧OCR一致”，均未经水印校验，不改变水印状态、载荷或区域计数。项目必须在watermark.analysis.json中明确opt-in；默认GameHelper，修改映射后需重构建，不按普通UI数字猜项目。此映射不参与编码指纹。
+
+同源完整静态目录包含固定版本worker、core和英文资源及许可。运行`npm ci --ignore-scripts && npm run build`，HTTP(S)提供整个dist目录（不仅index.html）。核心资源以内容哈希目录隔离；没有运行时CDN，不上传图片。单文件HTML保留隐形解码，OCR会明确提示不可用。OCR30秒含初始化，取消/换图终止Worker；隐形每图5秒。
+
+自动去暗色外框；可展开范围设置，在原图框选手机内容。侧边保留完整高度、转正、最多3倍/400万像素。候选置信至少90且首尾未明显贴切边；低置信、0或冲突不选身份。这是OCR工程置信，不是完整性或身份认证。不能由明文推导游戏、UTC或30秒区间。实际细字/缩小/JPEG仍可能失败，不承诺任意压缩可读。

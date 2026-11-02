@@ -18,3 +18,6 @@ header{height:auto;min-height:80px;flex-wrap:wrap;padding-top:12px;padding-botto
 #copy-payload{margin-left:auto;font-size:12px}
 
 .rule-panel{margin:12px 0;border:1px solid var(--line,#dce3e8);border-radius:12px;background:white;padding:14px 18px}.rule-panel summary{cursor:pointer;font-weight:600;overflow-wrap:anywhere}.rule-panel p,.rule-panel li{line-height:1.75;overflow-wrap:anywhere}.rule-panel pre{max-height:420px;overflow:auto;white-space:pre;font-size:13px;line-height:1.6}.rule-panel code{font-family:monospace}.loaded-rule{border-top:1px solid var(--line,#dce3e8);padding:14px 0}.loaded-rule:last-child{padding-bottom:0}@media(max-width:600px){.rule-panel{padding:12px}.rule-panel ol{padding-left:22px}}
+
+.visible-preview{display:block;max-width:100%;height:auto;margin:12px 0;border:1px solid #cbd5df}.roi-controls{display:flex;gap:12px;flex-wrap:wrap}.roi-controls input{width:90px;display:block}#visible-results{overflow-wrap:anywhere}#visible-section{margin:20px 0;padding:20px}
+#visible-results details{overflow-x:auto;max-width:100%}#visible-results details .visible-preview{max-width:none}#region-map{touch-action:pan-y}#visible-select[aria-pressed="true"]{border-color:#7c3aed;color:#7c3aed}

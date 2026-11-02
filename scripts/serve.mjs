@@ -10,11 +10,11 @@ http.createServer(async (request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   const file = pathname === '/' || pathname === '/index.html' ? 'index.html'
     : pathname === '/LICENSE.upstream' ? 'LICENSE.upstream'
-    : pathname === '/version.json' ? 'version.json' : null;
+    : pathname === '/version.json' ? 'version.json' : /^\/ocr-assets\/[a-f0-9]{16}\/(?:core\/|lang\/|licenses\/)?[a-zA-Z0-9_.@-]+$/.test(pathname) ? pathname.slice(1) : null;
   if (!file) { response.writeHead(404); response.end(); return; }
   try {
     const bytes = await readFile(root + file);
-    response.writeHead(200, {'Content-Type': file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store'});
+    response.writeHead(200, {'Content-Type': file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.js') ? 'application/javascript' : file.endsWith('.wasm') ? 'application/wasm' : file.endsWith('.gz') ? 'application/gzip' : file.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store'});
     response.end(request.method === 'HEAD' ? undefined : bytes);
   } catch { response.writeHead(404); response.end(); }
 }).listen(port, '127.0.0.1', () => console.log(`Static preview: http://127.0.0.1:${port}`));

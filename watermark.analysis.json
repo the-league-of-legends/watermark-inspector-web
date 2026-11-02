@@ -5,5 +5,11 @@
   "timeField": "capturedAt",
   "timeWindowSeconds": 30,
   "gameField": "gameId",
-  "logRouting": "existing-project-tools"
+  "logRouting": "existing-project-tools",
+  "visibleIdentity": {
+    "enabled": true,
+    "profile": "visible-edge-text-v1",
+    "sideWidthRatio": 0.08,
+    "maxValue": "9223372036854775807"
+  }
 }

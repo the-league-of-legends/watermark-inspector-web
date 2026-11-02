@@ -95,7 +95,7 @@ def decode_file(file,rules=None,project=None,seconds=5,box=None):
         hint=result.get('diagnostics',{}).get('edgeObservationHint')
         if reason=='insufficient_edge_observations' and hint:
             warning+=f"（每数据位最少{hint['minObservations']}次，要求{hint['requiredObservations']}次）"
-        return {'status':status,'source':source,'reason':reason,'warning':warning,
+        return {'status':status,'source':source,'reason':reason,'warning':warning+'；可按项目声明准备侧边图，由当前AI判断完整数字，不补猜',
                 'elapsedMs':round((time.monotonic()-started)*1000),'nonBlocking':True}
     legacy=result.get('protocol') in {'GHCV6','GHCV7'}
     payload=({k:result[k] for k in ['userId','loggedIn','gameId','timeStartUtc','timeEndUtc','protocolRevisionTimeUtc']} if legacy else result.get('payload'))
@@ -151,15 +151,28 @@ def main():
     p=argparse.ArgumentParser();commands=p.add_subparsers(dest='command',required=True)
     d=commands.add_parser('decode-image');d.add_argument('image');d.add_argument('--rules',action='append');d.add_argument('--project');d.add_argument('--timeout',type=float,default=5);d.add_argument('--box',nargs=4,type=float)
     g=commands.add_parser('generate-rules');g.add_argument('--source');g.add_argument('--project');g.add_argument('--verify-source',action='append');g.add_argument('--output')
+    v=commands.add_parser('prepare-visible');v.add_argument('image');v.add_argument('--project');v.add_argument('--analysis');v.add_argument('--box',nargs=4,type=float);v.add_argument('--output',required=True)
+    a=commands.add_parser('assess-visible');a.add_argument('--prepared',required=True);a.add_argument('--observations-json',required=True)
     commands.add_parser('doctor')
     args=p.parse_args()
     if args.command=='doctor':
         import importlib.util
         value={'node':bool(shutil.which('node')),'pillow':importlib.util.find_spec('PIL') is not None,'core':all((HERE/'core'/p).is_file() for p in ['codec.js','schema.js'])}
+    elif args.command in {'prepare-visible','assess-visible'}:
+        try:
+            import visible_identity as visible
+            if args.command=='prepare-visible':
+                profile=visible.load_profile(project_root(args.project),args.analysis)
+                value=visible.prepare(args.image,args.output,profile,args.box)
+                target=Path(args.output).expanduser()/'prepared.json'
+                if target.is_symlink():raise ValueError('拒绝通过符号链接写准备清单')
+                target.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n');target.chmod(0o600);value['manifest']=str(target)
+            else:value=visible.assess(json.loads(Path(args.prepared).read_text()),json.loads(args.observations_json).get('readings'))
+        except Exception as exc:value={'status':'visible_error','warning':str(exc)[:400],'nonBlocking':True}
     elif args.command=='generate-rules':
         value=generate_rules(args.source,args.project,args.verify_source,args.output)
     else:
         if not .01<=args.timeout<=60:p.error('--timeout must be 0.01..60 seconds')
         value=decode_file(args.image,args.rules,args.project,args.timeout,args.box)
-    print(json.dumps(value,ensure_ascii=False,indent=2));return 0 if value.get('status') in {'decoded','rules_ready'} or args.command=='doctor' and all(value.values()) else 2
+    print(json.dumps(value,ensure_ascii=False,indent=2));return 0 if value.get('status') in {'decoded','rules_ready','prepared','candidate','unlogged'} or args.command=='doctor' and all(value.values()) else 2
 if __name__=='__main__':sys.exit(main())

@@ -8,7 +8,7 @@ function decodeInWorker(data, width, height, turn) {
     const worker = new Worker(workerURL);
     activeWorker = worker;
     rejectActive = error => finish(error);
-    const timer = setTimeout(() => finish(Error('处理超过时限，未返回账号')), 65000);
+    const timer = setTimeout(() => finish(Object.assign(Error('处理超过5秒，未返回账号'),{code:'decode_timeout'})), 5000);
     function finish(error, value) {
       clearTimeout(timer);
       worker.terminate();
@@ -43,6 +43,7 @@ async function readLocalImage(file) {
 
 function cancelAnalysis() {
   generation++;
+  resetVisible();
   if (activeWorker) activeWorker.terminate();
   if (rejectActive) rejectActive(Error('cancelled'));
   activeWorker = rejectActive = null;
@@ -55,6 +56,7 @@ function clearImage() {
   urls = [];
   original = reference = overlay = pixels = residual = chroma = result = null;
   resetRegions();
+  $('visible-custom').checked=false;
   lastInputFile=null;
   renderPayload([]);
   $('details').textContent='';
@@ -69,7 +71,7 @@ function clearImage() {
 }
 
 async function analyze(file) {
-  if (!file || busy) return;
+  if (!file) return;
   clearImage();
   lastInputFile=file;
   if (file.size > 25 * 1024 * 1024) { showError('图片超过25 MB，请先缩小'); return; }
@@ -81,7 +83,7 @@ async function analyze(file) {
   $('drop').classList.remove('hidden');
   result = null;
   setBusy(true);
-  $('busytext').textContent = '浏览器正在校验水印… 最多约60秒，可随时取消';
+  $('busytext').textContent = '浏览器正在校验水印… 最多约5秒，可随时取消';
   let loaded = null;
   try {
     loaded = await readLocalImage(file);
@@ -91,7 +93,14 @@ async function analyze(file) {
     const context = canvas.getContext('2d', {willReadFrequently: true});
     context.drawImage(loaded.image, 0, 0);
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    const decoded = await decodeInWorker(imageData.data, canvas.width, canvas.height, turn);
+    const decodeStarted=performance.now();
+    let decoded;
+    try { decoded=await decodeInWorker(imageData.data,canvas.width,canvas.height,turn); }
+    catch(error) {
+      if(turn!==generation)throw error;
+      decoded={detected:false,reason:error.code==='decode_timeout'?'decode_timeout':'decoder_unavailable',
+        error:error.message,width:canvas.width,height:canvas.height,elapsedMs:performance.now()-decodeStarted};
+    }
     canvas.width = canvas.height = 1;
     if (turn !== generation) { URL.revokeObjectURL(loaded.url); return; }
     for (const url of urls) URL.revokeObjectURL(url);
@@ -100,6 +109,7 @@ async function analyze(file) {
     preparePixels();
     if (result.detected) ({reference, overlay} = buildBrowserReference(result, pixels.data));
     renderResult(file);
+    if(!result.detected && result.reason!=='conflicting_payloads')await runVisible(turn);
   } catch (error) {
     if (loaded) URL.revokeObjectURL(loaded.url);
     if (turn === generation && error.message !== 'cancelled') showError(error.message);
@@ -117,11 +127,13 @@ function renderResult(file) {
     decode_timeout: '在本次时间预算内未恢复完整载荷。可以尝试原始截图或保留更多清晰画面。',
     conflicting_payloads: '检测到相互冲突的载荷，未选择账号。对比拼图请分别截取各自区域后重试。',
     insufficient_observations: '有效观测不足，未返回任何残缺字段。请尝试保留更大的原始画面。',
+    decoder_unavailable: '隐形解码后台任务不可用，侧边OCR将单独尝试。',
     invalid_image: '图片尺寸或像素数据无效。',
     invalid_decode_budget: '解码时间预算无效，请使用正数时间预算。'
   };
   $('decode-reason').classList.toggle('hidden', result.detected && !unresolved);
   $('decode-reason').textContent = unresolved ? `规则指纹 ${result.schemaFingerprint}：${result.status==='unknown_schema'?'请载入该项目匹配版本的规则文件；不能使用不匹配的规则解释字段':'业务数据未通过规则范围或补零检查，未输出字段'}` : result.detected ? '' : (failureReasons[result.reason] || '未恢复完整且唯一的兼容载荷。图片可能没有水印，或信号受到缩放、遮挡和压缩影响。');
+  if(result.error)$('decode-reason').textContent += ' 具体原因：'+result.error;
   if(!result.detected && !['conflicting_payloads','decode_timeout'].includes(result.reason) && result.diagnostics?.edgeObservationHint) {
     const h=result.diagnostics.edgeObservationHint;
     if(h.minObservations<h.requiredObservations)$('decode-reason').textContent=

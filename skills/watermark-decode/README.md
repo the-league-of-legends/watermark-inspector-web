@@ -49,3 +49,7 @@ node skills/watermark-decode/examples/encode-demo.cjs /tmp/watermark-demo
 ## 边缘解码更新
 
 自动利用边缘定位头加速未知比例的正文搜索，兼容正文与边缘独立解码；详见[限制与失败处理](references/edge-decoding.md)。不保证单侧裁图可读，失败结果包含具体warning并继续原流程。
+
+## 侧边明文兜底
+
+隐形失败时使用[侧边明文规程](references/visible-identity.md)。当前AI会话读准备图，不另开视觉会话或本地OCR；单侧清晰完整可作为查询线索，无需反复确认。模糊/截断/冲突拒答，0不查询；这不是BCH/CRC校验，明文不能提供游戏或时间。
