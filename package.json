@@ -1,6 +1,6 @@
 {
   "name": "gamehelper-watermark-web",
-  "version": "1.4.0",
+  "version": "1.4.2",
   "private": true,
   "description": "\u901a\u7528\u8bca\u65ad\u6c34\u5370\u68c0\u67e5\u5668\uff1aGHCV6/7/8\u3001\u9879\u76ee\u89c4\u5219\u6307\u7eb9\u4e0e\u72ec\u7acb\u89e3\u7801Skill",
   "scripts": {
